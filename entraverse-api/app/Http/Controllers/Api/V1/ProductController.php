@@ -1,0 +1,143 @@
+<?php
+
+namespace App\Http\Controllers\Api\V1;
+
+use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreProductRequest;
+use App\Http\Requests\UpdateProductStatusRequest;
+use App\Http\Requests\UpdateProductRequest;
+use App\Http\Resources\ProductResource;
+use App\Models\Product;
+use App\Services\ProductService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+
+class ProductController extends Controller
+{
+    public function __construct(private ProductService $service) {}
+
+    public function index(Request $request)
+    {
+        $filters = $this->resolvePublicFilters($request);
+
+        return ProductResource::collection($this->service->paginate($filters));
+    }
+
+    public function loadMore(Request $request)
+    {
+        $filters = $this->resolvePublicFilters($request);
+
+        return ProductResource::collection($this->service->paginate($filters));
+    }
+
+    public function showImage(string $path)
+    {
+        $normalizedPath = ltrim($path, '/');
+
+        abort_unless(
+            $normalizedPath !== '' && Str::startsWith($normalizedPath, 'products/'),
+            404
+        );
+
+        if (! Storage::disk('public')->exists($normalizedPath)) {
+            abort(404);
+        }
+
+        return Storage::disk('public')->response($normalizedPath);
+    }
+
+    public function suggestions(Request $request)
+    {
+        $search = trim((string) $request->query('search', ''));
+        $limit = max(1, min((int) $request->query('limit', 6), 10));
+
+        if ($search === '') {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+                'meta' => [
+                    'keywords' => [],
+                ],
+            ]);
+        }
+
+        $result = $this->service->suggest($search, $limit);
+
+        return ProductResource::collection($result['products'])->additional([
+            'success' => true,
+            'meta' => [
+                'keywords' => $result['keywords'],
+            ],
+        ]);
+    }
+
+    public function indexAdmin(Request $request)
+    {
+        $filters = $request->query();
+        $filters['apply_visible'] = false;
+
+        return ProductResource::collection($this->service->paginate($filters));
+    }
+
+    public function show(Request $request, Product $product)
+    {
+        abort_if(! $product->isPubliclyVisible(), 404, 'Product not found');
+        $request->attributes->set('include_price_breakdown', true);
+        return new ProductResource($product);
+    }
+
+    public function showAdmin(Request $request, Product $product)
+    {
+        $request->attributes->set('include_price_breakdown', true);
+        return new ProductResource($product);
+    }
+
+    public function store(StoreProductRequest $request)
+    {
+        $product = $this->service->store($request->validated(), $request->file('images', []));
+        $request->attributes->set('include_price_breakdown', true);
+        return (new ProductResource($product))->response()->setStatusCode(201);
+    }
+
+    public function update(UpdateProductRequest $request, Product $product)
+    {
+        $request->attributes->set('include_price_breakdown', true);
+        return new ProductResource(
+            $this->service->update($product, $request->validated(), $request->file('images', []))
+        );
+    }
+
+    public function updateStatus(UpdateProductStatusRequest $request, Product $product)
+    {
+        $request->attributes->set('include_price_breakdown', true);
+        return new ProductResource(
+            $this->service->update($product, $request->validated())
+        );
+    }
+
+    public function destroy(Product $product)
+    {
+        $product->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Product deleted successfully',
+        ]);
+    }
+
+    private function resolvePublicFilters(Request $request): array
+    {
+        $filters = $request->query();
+        $filters['apply_visible'] = true;
+
+        // Scope Master Produk: hanya produk aktif dan tidak gagal sinkronisasi marketplace/Jurnal.
+        if ($request->boolean('only_active')) {
+            $filters['status'] = $filters['status'] ?? $filters['product_status'] ?? 'active';
+            $filters['exclude_failed_sync'] = $filters['exclude_failed_sync'] ?? true;
+            $filters['only_sync_activated'] = $filters['only_sync_activated'] ?? true;
+        }
+
+        return $filters;
+    }
+}

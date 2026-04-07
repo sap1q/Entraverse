@@ -1,0 +1,250 @@
+<?php
+
+namespace App\Http\Resources;
+
+use App\Models\MarketplaceMapping;
+use App\Services\Pricing\PricingCalculator;
+use App\Support\ProductVariantKey;
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+
+class ProductResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        $inventory = is_array($this->inventory) ? $this->inventory : [];
+        $variants = is_array($this->variants) ? $this->variants : [];
+        $variantPricing = is_array($this->variant_pricing) ? $this->variant_pricing : [];
+        $variantPricingItems = array_is_list($variantPricing)
+            ? $variantPricing
+            : (is_array($variantPricing['items'] ?? null) ? $variantPricing['items'] : []);
+        static $marketplaceMappingsTableExists;
+
+        if ($marketplaceMappingsTableExists === null) {
+            $marketplaceMappingsTableExists = Schema::hasTable('marketplace_mappings');
+        }
+
+        $marketplaceMappings = $marketplaceMappingsTableExists
+            ? MarketplaceMapping::query()
+                ->where('product_id', $this->id)
+                ->get()
+                ->groupBy(fn (MarketplaceMapping $mapping) => $mapping->channel . ':' . $mapping->variant_key)
+            : collect();
+
+        $normalizedPricing = collect($variantPricingItems)
+            ->filter(fn ($item) => is_array($item))
+            ->values()
+            ->map(function (array $item, int $index) use ($marketplaceMappings) {
+                $warehouseStock = [];
+                if (is_array($item['warehouse_stock'] ?? null)) {
+                    foreach ($item['warehouse_stock'] as $warehouse => $qty) {
+                        $warehouseName = trim(is_string($warehouse) ? $warehouse : '');
+                        if ($warehouseName === '') {
+                            continue;
+                        }
+
+                        $warehouseStock[$warehouseName] = (int) $qty;
+                    }
+                }
+
+                if ($warehouseStock === []) {
+                    $fallbackWarehouse = trim((string) ($item['warehouse'] ?? 'Gudang Utama'));
+                    if ($fallbackWarehouse === '') {
+                        $fallbackWarehouse = 'Gudang Utama';
+                    }
+
+                    $warehouseStock[$fallbackWarehouse] = (int) ($item['stock'] ?? 0);
+                }
+
+                $item['warehouse_stock'] = $warehouseStock;
+                $item['warehouse'] = (string) (array_key_first($warehouseStock) ?? 'Gudang Utama');
+                $item['stock'] = (int) collect($warehouseStock)->sum();
+                $item['purchase_price'] = (float) ($item['purchase_price'] ?? 0);
+                $item['purchase_price_idr'] = (float) ($item['purchase_price_idr'] ?? 0);
+                $item['margin_percent'] = (float) ($item['margin_percent'] ?? 0);
+                $item['tiktok_price'] = (float) ($item['tiktok_price'] ?? ($item['tokopedia_price'] ?? 0));
+                $item['tiktok_fee'] = (float) ($item['tiktok_fee'] ?? ($item['tokopedia_fee'] ?? 0));
+                $variantKey = ProductVariantKey::resolve($item, $index);
+                $tiktokMapping = $marketplaceMappings->get('tiktok:' . $variantKey)?->first();
+                $shopeeMapping = $marketplaceMappings->get('shopee:' . $variantKey)?->first();
+                $item['id'] = $variantKey;
+                $item['marketplace_mapping'] = [
+                    'tiktok' => $tiktokMapping ? [
+                        'id' => (string) $tiktokMapping->id,
+                        'status' => (string) $tiktokMapping->status,
+                        'marketplace_product_id' => $tiktokMapping->marketplace_product_id,
+                        'marketplace_sku_id' => $tiktokMapping->marketplace_sku_id,
+                        'last_synced_at' => optional($tiktokMapping->last_synced_at)?->toISOString(),
+                        'last_error' => $tiktokMapping->last_error,
+                    ] : null,
+                    'shopee' => $shopeeMapping ? [
+                        'id' => (string) $shopeeMapping->id,
+                        'status' => (string) $shopeeMapping->status,
+                        'marketplace_product_id' => $shopeeMapping->marketplace_product_id,
+                        'marketplace_sku_id' => $shopeeMapping->marketplace_sku_id,
+                        'last_synced_at' => optional($shopeeMapping->last_synced_at)?->toISOString(),
+                        'last_error' => $shopeeMapping->last_error,
+                    ] : null,
+                ];
+                return $item;
+            })
+            ->values();
+
+        $stockFromPricing = (int) $normalizedPricing->sum(fn (array $item) => (int) ($item['stock'] ?? 0));
+        $totalStock = isset($inventory['total_stock'])
+            ? (int) $inventory['total_stock']
+            : (isset($this->stock) ? (int) $this->stock : $stockFromPricing);
+        $price = (float) ($inventory['price'] ?? 0);
+        $weight = (int) ($inventory['weight'] ?? 0);
+
+        $photoItems = is_array($this->photos) ? $this->photos : [];
+        $normalizedPhotos = collect($photoItems)
+            ->map(function ($photo) {
+                $url = null;
+                $alt = null;
+                $isPrimary = false;
+
+                if (is_string($photo) && trim($photo) !== '') {
+                    $url = $photo;
+                } elseif (is_array($photo)) {
+                    $url = is_string($photo['url'] ?? null) ? $photo['url'] : null;
+                    $alt = is_string($photo['alt'] ?? null) ? $photo['alt'] : null;
+                    $isPrimary = (bool) ($photo['is_primary'] ?? false);
+                }
+
+                if (! is_string($url) || trim($url) === '') {
+                    return null;
+                }
+
+                $absoluteUrl = $this->resolveProductPhotoUrl($url);
+                if ($absoluteUrl === null) {
+                    return null;
+                }
+
+                return [
+                    'url' => $absoluteUrl,
+                    'alt' => $alt,
+                    'is_primary' => $isPrimary,
+                ];
+            })
+            ->filter()
+            ->take(5)
+            ->values();
+
+        $mainImage = $normalizedPhotos->firstWhere('is_primary', true) ?? $normalizedPhotos->first();
+        $includePriceBreakdown = (bool) ($request->attributes->get('include_price_breakdown', false)
+            || $request->boolean('include_price_breakdown'));
+        $brandModel = $this->relationLoaded('brandModel') ? $this->brandModel : null;
+        $status = strtolower(trim((string) ($this->status ?? '')));
+        if (! in_array($status, ['active', 'inactive', 'draft'], true)) {
+            $legacyStatus = strtolower(trim((string) ($this->product_status ?? '')));
+            $status = match ($legacyStatus) {
+                'active' => 'active',
+                'inactive' => 'inactive',
+                default => 'draft',
+            };
+        }
+
+        $brandLogo = is_string($brandModel?->logo ?? null) ? (string) $brandModel->logo : null;
+        $brandLogoUrl = null;
+        if ($brandLogo && trim($brandLogo) !== '') {
+            $brandLogoUrl = Str::startsWith($brandLogo, ['http://', 'https://'])
+                ? $brandLogo
+                : url($brandLogo);
+        }
+        $brandReference = $brandModel
+            ? [
+                'id' => (string) $brandModel->id,
+                'name' => (string) $brandModel->name,
+                'slug' => (string) $brandModel->slug,
+                'logo' => $brandModel->logo,
+                'logo_url' => $brandLogoUrl,
+                'is_active' => (bool) $brandModel->is_active,
+            ]
+            : null;
+
+        $payload = [
+            'id' => (string) $this->id,
+            'uuid' => (string) $this->id,
+            'name' => $this->name,
+            'slug' => Str::slug((string) $this->name),
+            'brand' => $brandModel?->name ?? $this->brand,
+            'brand_id' => $this->brand_id ? (string) $this->brand_id : ($brandModel ? (string) $brandModel->id : null),
+            'brand_ref' => $brandReference,
+            'category' => $this->category,
+            'category_id' => $this->category_id ? (string) $this->category_id : null,
+            'description' => $this->description,
+            'spu' => $this->spu,
+            'price' => $price,
+            'formatted_price' => 'Rp ' . number_format($price, 0, ',', '.'),
+            'stock' => $totalStock,
+            'is_in_stock' => $totalStock > 0,
+            'inventory' => [
+                'price' => $price,
+                'weight' => $weight,
+                'total_stock' => $totalStock,
+                ...$inventory,
+            ],
+            'variants' => $variants,
+            'variant_pricing' => $normalizedPricing->all(),
+            'photos' => $normalizedPhotos->all(),
+            'main_image' => $mainImage['url'] ?? null,
+            'trade_in' => (bool) $this->trade_in,
+            'product_status' => $this->product_status,
+            'status' => $status,
+            'is_featured' => (bool) ($this->is_featured ?? false),
+            'stock_status' => $this->stock_status ?? ($totalStock > 0 ? 'in_stock' : 'out_of_stock'),
+            'jurnal_id' => $this->jurnal_id,
+            'jurnal_metadata' => $this->jurnal_metadata,
+            'mekari_status' => $this->mekari_status,
+            'last_synced_at' => optional($this->last_synced_at)?->toISOString(),
+            'created_at' => optional($this->created_at)?->toISOString(),
+            'updated_at' => optional($this->updated_at)?->toISOString(),
+        ];
+
+        if ($includePriceBreakdown) {
+            $payload['price_breakdown'] = app(PricingCalculator::class)->fromProduct($this->resource)->toArray();
+        }
+
+        return $payload;
+    }
+
+    private function resolveProductPhotoUrl(string $value): ?string
+    {
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return null;
+        }
+
+        if (Str::startsWith($trimmed, ['http://', 'https://'])) {
+            $parsedPath = parse_url($trimmed, PHP_URL_PATH);
+            if (! is_string($parsedPath) || $parsedPath === '') {
+                return $trimmed;
+            }
+
+            $trimmed = $parsedPath;
+        }
+
+        $normalized = ltrim($trimmed, '/');
+
+        if (Str::startsWith($normalized, 'api/v1/products/image/')) {
+            return url('/' . $normalized);
+        }
+
+        if (Str::startsWith($normalized, 'storage/products/')) {
+            $normalized = Str::after($normalized, 'storage/');
+        }
+
+        if (Str::startsWith($normalized, 'products/')) {
+            return route('products.image', ['path' => $normalized]);
+        }
+
+        if (Str::startsWith($trimmed, '/')) {
+            return url($trimmed);
+        }
+
+        return null;
+    }
+}
