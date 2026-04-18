@@ -80,11 +80,12 @@ class ProductController extends Controller
         return ProductResource::collection($this->service->paginate($filters));
     }
 
-    public function show(Request $request, Product $product)
+    public function show(Request $request, string $product)
     {
-        abort_if(! $product->isPubliclyVisible(), 404, 'Product not found');
+        $resolvedProduct = $this->service->findPublicByIdentifierOrSlug($product);
+        abort_if(! $resolvedProduct, 404, 'Product not found');
         $request->attributes->set('include_price_breakdown', true);
-        return new ProductResource($product);
+        return new ProductResource($resolvedProduct);
     }
 
     public function showAdmin(Request $request, Product $product)

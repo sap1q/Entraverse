@@ -8,6 +8,7 @@ use App\Models\Admin;
 use App\Models\Product;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderItem;
+use App\Support\SharedInventory;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -56,7 +57,7 @@ class SalesOrderService
         $driver = DB::connection()->getDriverName();
 
         $products = Product::query()
-            ->select(['id', 'name', 'spu', 'variant_pricing'])
+            ->select(['id', 'name', 'spu', 'inventory', 'variant_pricing'])
             ->when($search !== '', function (Builder $query) use ($driver, $search) {
                 if ($driver === 'pgsql') {
                     $query->where(fn (Builder $q) => $q
@@ -671,7 +672,7 @@ class SalesOrderService
             ];
         }
 
-        return array_values(array_map(function (array $row, int $index) use ($product): array {
+        $normalizedRows = array_values(array_map(function (array $row, int $index) use ($product): array {
             $normalized = $row;
             $normalized['sku'] = $this->resolveSku($product, $row, $index);
             $normalized['label'] = (string) ($row['label'] ?? $row['variant_name'] ?? $row['variant_code'] ?? 'Default');
@@ -684,6 +685,16 @@ class SalesOrderService
 
             return $normalized;
         }, $rows, array_keys($rows)));
+
+        $inventory = is_array($product->inventory) ? $product->inventory : [];
+        $fallbackWarehouse = trim((string) ($inventory['warehouse'] ?? ''));
+        $fallbackStock = (int) ($inventory['total_stock'] ?? $product->stock ?? 0);
+
+        return SharedInventory::synchronizeVariantRows(
+            $normalizedRows,
+            $fallbackStock,
+            $fallbackWarehouse !== '' ? $fallbackWarehouse : 'Gudang Utama'
+        );
     }
 
     private function findVariantBySku(Product $product, string $variantSku): ?array

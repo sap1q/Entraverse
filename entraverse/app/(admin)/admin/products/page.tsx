@@ -1,8 +1,9 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ChevronsUpDown, Loader2, Plus } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { useProductSyncStatus } from "@/hooks/useProductSyncStatus";
 import api, { isAxiosError } from "@/lib/axios";
 import { patchProductStatus } from "@/lib/api/product";
@@ -23,6 +24,19 @@ type ApiProduct = {
   name: string;
   slug?: string | null;
   brand?: string | null;
+  brand_id?: string | null;
+  brand_ref?: {
+    id?: string | null;
+    name?: string | null;
+    slug?: string | null;
+  } | null;
+  category?: string | null;
+  category_id?: string | null;
+  category_ref?: {
+    id?: string | null;
+    name?: string | null;
+    slug?: string | null;
+  } | null;
   spu?: string | null;
   status?: string | null;
   product_status?: string | null;
@@ -89,7 +103,7 @@ const resolvePrimaryPhoto = (product: ApiProduct): string => {
   const explicitPrimary = normalizedPhotos.find((entry) => entry.isPrimary);
   if (explicitPrimary) return explicitPrimary.url;
 
-  return normalizedPhotos[0]?.url ?? "/product-placeholder.svg";
+  return normalizedPhotos[0]?.url ?? "";
 };
 
 const isRequestCanceled = (error: unknown): boolean => {
@@ -111,6 +125,9 @@ const parsePrice = (value: unknown): number | null => {
 
 const hasPositivePrice = (value: number | null | undefined): boolean =>
   typeof value === "number" && Number.isFinite(value) && value > 0;
+
+const normalizeFilterToken = (value: string | null | undefined): string =>
+  String(value ?? "").trim().toLowerCase();
 
 const normalizeStatus = (status: string | null | undefined): ProductVisibilityStatus => {
   const normalized = String(status ?? "").trim().toLowerCase();
@@ -170,8 +187,16 @@ const resolveJurnalReady = (product: ApiProduct): boolean => {
   );
 };
 
+const matchesFilterToken = (candidates: Array<string | null | undefined>, selected: string): boolean => {
+  const normalizedSelected = normalizeFilterToken(selected);
+  if (!normalizedSelected || normalizedSelected === "all") return true;
+
+  return candidates.some((candidate) => normalizeFilterToken(candidate) === normalizedSelected);
+};
+
 const mapApiProduct = (product: ApiProduct): ProductTableProduct => {
   const variantRows = Array.isArray(product.variant_pricing) ? product.variant_pricing : [];
+  const primaryPhoto = resolvePrimaryPhoto(product);
 
   const normalizedVariants = variantRows.map((variant) => {
     const skuValue = variant.sku ?? variant.variant_code ?? product.spu ?? "UNKNOWN-SKU";
@@ -207,13 +232,17 @@ const mapApiProduct = (product: ApiProduct): ProductTableProduct => {
       .replace(/\s+/g, "-")
       .replace(/-+/g, "-"),
     brand: product.brand ?? null,
+    brandId: product.brand_id ?? product.brand_ref?.id ?? null,
+    category: product.category ?? product.category_ref?.name ?? null,
+    categoryId: product.category_id ?? product.category_ref?.id ?? null,
     spu: product.spu ?? "N/A",
     jurnal_id: product.jurnal_id ?? null,
     jurnal_archived: resolveJurnalArchived(product.jurnal_metadata),
     inventory: {
       total_stock: totalStock,
     },
-    photo: resolvePrimaryPhoto(product),
+    photo: primaryPhoto,
+    hasPhoto: primaryPhoto.length > 0,
     status,
     stock_status: normalizeStockStatus(product.stock_status, totalStock),
     is_featured: Boolean(product.is_featured),
@@ -335,10 +364,14 @@ const buildFetchErrorState = (error: unknown): FetchErrorState => {
 };
 
 export default function MasterProdukPage() {
-  const { metrics: syncMetrics, loading: syncMetricsLoading } = useProductSyncStatus();
+  const { metrics: syncMetrics, loading: syncMetricsLoading, refresh: refreshSyncMetrics } = useProductSyncStatus();
   const [products, setProducts] = useState<ProductTableProduct[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | ProductVisibilityStatus>("all");
+  const [brandFilter, setBrandFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [stockFilter, setStockFilter] = useState<"all" | ProductStockStatus>("all");
+  const [featuredOnly, setFeaturedOnly] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorState, setErrorState] = useState<FetchErrorState | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
@@ -348,10 +381,47 @@ export default function MasterProdukPage() {
   const [perPage, setPerPage] = useState(MASTER_PRODUCT_PAGE_SIZE);
   const [mappingJurnal, setMappingJurnal] = useState(false);
   const [mappingMessage, setMappingMessage] = useState<string | null>(null);
+  const [optimisticInboundSyncAt, setOptimisticInboundSyncAt] = useState<string | null>(null);
   const [quickStatusMessage, setQuickStatusMessage] = useState<string | null>(null);
   const [updatingStatusIds, setUpdatingStatusIds] = useState<Record<string, boolean>>({});
   const [updatingFeaturedIds, setUpdatingFeaturedIds] = useState<Record<string, boolean>>({});
   const debouncedSearch = useDebounce(search, 500);
+
+  const applyLocalFilters = useCallback(
+    (items: ProductTableProduct[]) => {
+      const normalizedSearch = normalizeFilterToken(debouncedSearch);
+
+      return items.filter((product) => {
+        if (statusFilter !== "all" && product.status !== statusFilter) return false;
+        if (stockFilter !== "all" && product.stock_status !== stockFilter) return false;
+        if (featuredOnly && !product.is_featured) return false;
+        if (
+          !matchesFilterToken([product.brandId, product.brand], brandFilter)
+        ) {
+          return false;
+        }
+        if (
+          !matchesFilterToken([product.categoryId, product.category], categoryFilter)
+        ) {
+          return false;
+        }
+        if (!normalizedSearch) return true;
+
+        const haystack = [
+          product.name,
+          product.slug,
+          product.spu,
+          product.brand ?? "",
+          product.category ?? "",
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        return haystack.includes(normalizedSearch);
+      });
+    },
+    [brandFilter, categoryFilter, debouncedSearch, featuredOnly, statusFilter, stockFilter]
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -365,6 +435,10 @@ export default function MasterProdukPage() {
           params: {
             search: debouncedSearch || undefined,
             status: statusFilter === "all" ? undefined : statusFilter,
+            brand: brandFilter === "all" ? undefined : brandFilter,
+            category: categoryFilter === "all" ? undefined : categoryFilter,
+            stock_status: stockFilter === "all" ? undefined : stockFilter,
+            featured: featuredOnly ? 1 : undefined,
             page: currentPage,
             per_page: MASTER_PRODUCT_PAGE_SIZE,
           },
@@ -373,13 +447,23 @@ export default function MasterProdukPage() {
 
         const items = extractProductsFromPayload(response.data);
         const meta = extractPaginationMeta(response.data);
+        const mappedProducts = items.map(mapApiProduct);
+        const filteredProducts = applyLocalFilters(mappedProducts);
+        const fallbackWasNeeded = filteredProducts.length !== mappedProducts.length;
 
         if (!stillMounted) return;
-        setProducts(items.map(mapApiProduct));
-        setCurrentPage(Math.max(1, meta.currentPage));
-        setLastPage(Math.max(1, meta.lastPage));
-        setPerPage(Math.max(1, meta.perPage));
-        setTotalProducts(Math.max(0, meta.total));
+        setProducts(filteredProducts);
+        if (fallbackWasNeeded) {
+          setCurrentPage(1);
+          setLastPage(1);
+          setPerPage(Math.max(filteredProducts.length, 1));
+          setTotalProducts(filteredProducts.length);
+        } else {
+          setCurrentPage(Math.max(1, meta.currentPage));
+          setLastPage(Math.max(1, meta.lastPage));
+          setPerPage(Math.max(1, meta.perPage));
+          setTotalProducts(Math.max(0, meta.total));
+        }
       } catch (error) {
         if (isRequestCanceled(error)) return;
 
@@ -416,11 +500,11 @@ export default function MasterProdukPage() {
       stillMounted = false;
       controller.abort();
     };
-  }, [currentPage, debouncedSearch, reloadTick, statusFilter]);
+  }, [applyLocalFilters, brandFilter, categoryFilter, currentPage, debouncedSearch, featuredOnly, reloadTick, statusFilter, stockFilter]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, statusFilter]);
+  }, [brandFilter, categoryFilter, debouncedSearch, featuredOnly, statusFilter, stockFilter]);
 
   const refreshProducts = useCallback(() => {
     setReloadTick((prev) => prev + 1);
@@ -520,7 +604,9 @@ export default function MasterProdukPage() {
       setMappingMessage(
         `Import Jurnal selesai. Imported: ${result?.imported_count ?? 0}, Created: ${result?.created ?? 0}, Updated: ${result?.updated ?? 0}, Failed: ${result?.failed_count ?? 0}.`
       );
+      setOptimisticInboundSyncAt(new Date().toISOString());
       refreshProducts();
+      refreshSyncMetrics();
     } catch (error) {
       if (isAxiosError(error)) {
         setMappingMessage(error.response?.data?.message ?? "Gagal menarik produk dari Jurnal.");
@@ -530,9 +616,22 @@ export default function MasterProdukPage() {
     } finally {
       setMappingJurnal(false);
     }
-  }, [refreshProducts]);
+  }, [refreshProducts, refreshSyncMetrics]);
 
-  const inboundSyncLabel = syncMetrics.latestInboundSync ? formatDateTimeID(syncMetrics.latestInboundSync) : "Belum ada data";
+  const latestInboundSync = (() => {
+    if (!optimisticInboundSyncAt) return syncMetrics.latestInboundSync;
+    if (!syncMetrics.latestInboundSync) return optimisticInboundSyncAt;
+
+    const optimisticTime = new Date(optimisticInboundSyncAt).getTime();
+    const metricTime = new Date(syncMetrics.latestInboundSync).getTime();
+
+    if (Number.isNaN(optimisticTime)) return syncMetrics.latestInboundSync;
+    if (Number.isNaN(metricTime)) return optimisticInboundSyncAt;
+
+    return optimisticTime > metricTime ? optimisticInboundSyncAt : syncMetrics.latestInboundSync;
+  })();
+
+  const inboundSyncLabel = latestInboundSync ? formatDateTimeID(latestInboundSync) : "Belum ada data";
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-5">
@@ -547,17 +646,22 @@ export default function MasterProdukPage() {
               type="button"
               onClick={handleMapJurnalProducts}
               disabled={mappingJurnal}
-              className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-3.5 py-2 text-sm font-semibold text-blue-600 transition hover:bg-blue-50"
+              aria-label={mappingJurnal ? "Menarik dari Jurnal..." : "Tarik dari Jurnal"}
+              title={mappingJurnal ? "Menarik dari Jurnal..." : "Tarik dari Jurnal"}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-blue-200 bg-white text-blue-600 transition hover:bg-blue-50"
             >
-              {mappingJurnal ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronsUpDown className="h-4 w-4" />}
-              {mappingJurnal ? "Menarik dari Jurnal..." : "Tarik dari Jurnal"}
+              {mappingJurnal ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Image src="/assets/images/icons/Jurnal.webp" alt="" width={18} height={18} className="h-[18px] w-[18px]" />
+              )}
             </button>
             <Link
               href="/admin/master-produk/tambah"
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
               <Plus className="h-4 w-4" />
-              + Tambah produk
+              Tambah produk
             </Link>
           </div>
         </div>
@@ -595,6 +699,14 @@ export default function MasterProdukPage() {
         onRefresh={refreshProducts}
         statusFilter={statusFilter}
         onStatusFilterChange={(value) => setStatusFilter(value)}
+        brandFilter={brandFilter}
+        onBrandFilterChange={setBrandFilter}
+        categoryFilter={categoryFilter}
+        onCategoryFilterChange={setCategoryFilter}
+        stockFilter={stockFilter}
+        onStockFilterChange={setStockFilter}
+        featuredOnly={featuredOnly}
+        onFeaturedOnlyChange={setFeaturedOnly}
         onToggleFeatured={handleToggleFeatured}
         onToggleStatus={handleToggleStatus}
         updatingFeaturedIds={updatingFeaturedIds}

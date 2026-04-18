@@ -1,6 +1,24 @@
 <?php
 
-use Laravel\Sanctum\Sanctum;
+$frontendUrl = (string) (env('APP_FRONTEND_URL', env('FRONTEND_URL', '')) ?: '');
+$frontendHost = $frontendUrl !== '' ? parse_url($frontendUrl, PHP_URL_HOST) : null;
+$frontendPort = $frontendUrl !== '' ? parse_url($frontendUrl, PHP_URL_PORT) : null;
+$appUrl = (string) (env('APP_URL', '') ?: '');
+$appHost = $appUrl !== '' ? parse_url($appUrl, PHP_URL_HOST) : null;
+$appPort = $appUrl !== '' ? parse_url($appUrl, PHP_URL_PORT) : null;
+
+$defaultStatefulDomains = array_values(array_filter([
+    'localhost',
+    'localhost:3000',
+    '127.0.0.1',
+    '127.0.0.1:3000',
+    '127.0.0.1:8000',
+    '::1',
+    $frontendHost,
+    $frontendHost && $frontendPort ? sprintf('%s:%s', $frontendHost, $frontendPort) : null,
+    $appHost,
+    $appHost && $appPort ? sprintf('%s:%s', $appHost, $appPort) : null,
+]));
 
 return [
 
@@ -15,12 +33,7 @@ return [
     |
     */
 
-    'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
-        '%s%s%s',
-        'localhost,localhost:3000,127.0.0.1,127.0.0.1:3000,127.0.0.1:8000,::1',
-        Sanctum::currentApplicationUrlWithPort(),
-        env('FRONTEND_URL') ? ','.parse_url(env('FRONTEND_URL'), PHP_URL_HOST) : ''
-    ))),
+    'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', implode(',', array_unique($defaultStatefulDomains)))),
 
     /*
     |--------------------------------------------------------------------------
@@ -47,7 +60,7 @@ return [
     |
     */
 
-    'expiration' => null,
+    'expiration' => env('SANCTUM_EXPIRATION', 60 * 24 * 7),
 
     /*
     |--------------------------------------------------------------------------

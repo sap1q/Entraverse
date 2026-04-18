@@ -12,6 +12,16 @@ use Illuminate\Support\Facades\Log;
 
 class AuthService
 {
+    private function issueToken(Admin $admin): string
+    {
+        $expirationMinutes = config('sanctum.expiration');
+        $expiresAt = is_numeric($expirationMinutes)
+            ? now()->addMinutes((int) $expirationMinutes)
+            : null;
+
+        return $admin->createToken('admin-panel', ['*'], $expiresAt)->plainTextToken;
+    }
+
     /**
      * @param array<string, mixed> $credentials
      * @return array{token: string, admin: Admin}
@@ -29,7 +39,7 @@ class AuthService
             'last_login_at' => now(),
         ])->save();
 
-        $token = $admin->createToken('admin-panel')->plainTextToken;
+        $token = $this->issueToken($admin);
 
         Log::info('Admin login success', ['admin_id' => (string) $admin->id]);
 
@@ -52,7 +62,7 @@ class AuthService
             'role' => $payload['role'] ?? 'staff',
         ]);
 
-        $token = $admin->createToken('admin-panel')->plainTextToken;
+        $token = $this->issueToken($admin);
 
         Log::info('Admin register success', ['admin_id' => (string) $admin->id]);
 

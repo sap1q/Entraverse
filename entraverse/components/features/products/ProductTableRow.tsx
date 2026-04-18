@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, Eye, Flame, Loader2, Star } from "lucide-react";
+import { ChevronDown, Eye, Flame, ImageOff, Loader2, Star } from "lucide-react";
 import JurnalSyncButton from "@/components/features/integrations/JurnalSyncButton";
 import ProductActions from "@/components/features/products/ProductActions";
 
@@ -28,12 +28,16 @@ export interface ProductTableRowProduct {
   slug: string;
   spu: string;
   brand?: string | null;
+  brandId?: string | null;
+  category?: string | null;
+  categoryId?: string | null;
   jurnal_id?: string | null;
   jurnal_archived?: boolean;
   inventory?: {
     total_stock?: number;
   };
   photo: string;
+  hasPhoto: boolean;
   status: ProductStatus;
   stock_status: ProductStockStatus;
   is_featured: boolean;
@@ -159,10 +163,10 @@ const marketplaceMeta: Record<
   }
 > = {
   tokopedia: {
-    label: "Tokopedia",
-    iconSrc: "/assets/images/icons/Tokopedia_Mascot.png",
-    iconAlt: "Tokopedia",
-    iconSize: 24,
+    label: "Jurnal",
+    iconSrc: "/assets/images/icons/Jurnal.webp",
+    iconAlt: "Jurnal",
+    iconSize: 18,
     iconClassName: "object-contain",
   },
   tiktok: {
@@ -231,18 +235,37 @@ export default function ProductTableRow({
       >
         <td className="border-b border-gray-100 px-3 py-4 align-top">
           <div className="relative h-12 w-12 overflow-hidden rounded-lg border border-gray-100 bg-white">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={product.photo || "/product-placeholder.svg"}
-              alt={product.name}
-              className={`h-full w-full object-cover transition ${isOutOfStock ? "grayscale opacity-45" : ""}`}
-              loading="lazy"
-              onError={(event) => {
-                if (event.currentTarget.dataset.fallbackApplied === "1") return;
-                event.currentTarget.dataset.fallbackApplied = "1";
-                event.currentTarget.src = "/product-placeholder.svg";
-              }}
-            />
+            {product.hasPhoto ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={product.photo}
+                  alt={product.name}
+                  className={`h-full w-full object-cover transition ${isOutOfStock ? "grayscale opacity-45" : ""}`}
+                  loading="lazy"
+                  onError={(event) => {
+                    event.currentTarget.style.display = "none";
+                    const fallback = event.currentTarget.nextElementSibling;
+                    if (fallback instanceof HTMLElement) {
+                      fallback.style.display = "flex";
+                    }
+                  }}
+                />
+                <div className="absolute inset-0 hidden items-center justify-center bg-slate-50 text-slate-400">
+                  <div className="flex flex-col items-center gap-1">
+                    <ImageOff className="h-4 w-4" />
+                    <span className="text-[7px] font-semibold uppercase tracking-[0.16em]">No Image</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-50 text-slate-400">
+                <div className="flex flex-col items-center gap-1">
+                  <ImageOff className="h-4 w-4" />
+                  <span className="text-[7px] font-semibold uppercase tracking-[0.16em]">No Image</span>
+                </div>
+              </div>
+            )}
             {isOutOfStock ? (
               <div className="absolute inset-0 flex items-center justify-center bg-slate-500/22">
                 <span className="px-1 text-center text-[8px] font-black uppercase leading-none tracking-[0.16em] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.32)]">

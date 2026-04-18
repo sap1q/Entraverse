@@ -1,13 +1,23 @@
 import axios, { isAxiosError, type AxiosError } from "axios";
 import {
+  isAdminApiPath,
+  isCustomerApiPath,
   getSessionRole,
+  normalizeRequestPath,
   resolveUnauthorizedDestination,
   usesAuthenticatedApi,
 } from "@/src/lib/auth/access";
 import { TokenService } from "@/src/lib/auth/tokens";
-import { API_BASE_URL, API_ORIGIN } from "@/lib/api-config";
+import { API_BASE_URL } from "@/lib/api-config";
+import {
+  ADMIN_PROXY_PREFIX,
+  ADMIN_SESSION_ENDPOINTS,
+  ADMIN_STOREFRONT_PROXY_PREFIX,
+  CUSTOMER_SESSION_ENDPOINTS,
+  STOREFRONT_PROXY_PREFIX,
+} from "@/src/constants/auth-cookies";
 
-const CSRF_COOKIE_ENDPOINT = `${API_ORIGIN}/sanctum/csrf-cookie`;
+const CSRF_COOKIE_ENDPOINT = CUSTOMER_SESSION_ENDPOINTS.csrfCookie;
 const CSRF_REFRESH_INTERVAL = 4 * 60 * 60 * 1000;
 const XSRF_COOKIE_NAME = "XSRF-TOKEN";
 const XSRF_HEADER_NAME = "X-XSRF-TOKEN";
@@ -15,15 +25,59 @@ const XSRF_HEADER_NAME = "X-XSRF-TOKEN";
 let csrfCookiePromise: Promise<void> | null = null;
 let csrfLastFetched = 0;
 
+const buildAdminProxyUrl = (url: string): string => {
+  if (!url) return url;
+  if (url.startsWith(ADMIN_PROXY_PREFIX)) return url;
+
+  const normalized = url.replace(/^https?:\/\/[^/]+/i, "");
+  const [path, query = ""] = normalized.split("?");
+  const basePath = path.startsWith("/") ? path : `/${path}`;
+  return query ? `${ADMIN_PROXY_PREFIX}${basePath}?${query}` : `${ADMIN_PROXY_PREFIX}${basePath}`;
+};
+
+const buildAdminStorefrontProxyUrl = (url: string): string => {
+  if (!url) return url;
+  if (url.startsWith(ADMIN_STOREFRONT_PROXY_PREFIX)) return url;
+
+  const normalized = url.replace(/^https?:\/\/[^/]+/i, "");
+  const [path, query = ""] = normalized.split("?");
+  const basePath = path.startsWith("/") ? path : `/${path}`;
+  return query ? `${ADMIN_STOREFRONT_PROXY_PREFIX}${basePath}?${query}` : `${ADMIN_STOREFRONT_PROXY_PREFIX}${basePath}`;
+};
+
+const buildStorefrontProxyUrl = (url: string): string => {
+  if (!url) return url;
+  if (url.startsWith(STOREFRONT_PROXY_PREFIX)) return url;
+
+  const normalized = url.replace(/^https?:\/\/[^/]+/i, "");
+  const [path, query = ""] = normalized.split("?");
+  const basePath = path.startsWith("/") ? path : `/${path}`;
+  return query ? `${STOREFRONT_PROXY_PREFIX}${basePath}?${query}` : `${STOREFRONT_PROXY_PREFIX}${basePath}`;
+};
+
+const isAppInternalApiUrl = (url: string): boolean => {
+  if (!url) return false;
+  return url.startsWith("/api/");
+};
+
 const usesBearerToken = (url: string): boolean => {
-  return usesAuthenticatedApi(url);
+  return isCustomerApiPath(url);
 };
 
 const shouldUseCsrfCookie = (url: string): boolean => {
   if (!url) return false;
   if (url.includes("/sanctum/csrf-cookie")) return false;
 
-  return false;
+  const normalizedPath = normalizeRequestPath(url);
+
+  return normalizedPath === "/login" ||
+    normalizedPath === "/customer-session/login" ||
+    normalizedPath === "/register" ||
+    normalizedPath === "/customer-session/register" ||
+    normalizedPath === "/logout" ||
+    normalizedPath === "/customer-session/logout" ||
+    normalizedPath === "/forgot-password" ||
+    normalizedPath === "/reset-password";
 };
 
 const ensureCsrfCookie = async (force = false) => {
@@ -111,7 +165,15 @@ const clearXsrfHeader = (headers: unknown) => {
 };
 
 export const getAuthToken = (): string | null => {
-  return TokenService.hasValidToken() ? TokenService.getToken() : null;
+  if (TokenService.hasValidToken()) {
+    return TokenService.getToken();
+  }
+
+  if (getSessionRole() === "admin") {
+    return "__admin_cookie_session__";
+  }
+
+  return null;
 };
 
 export const api = axios.create({
@@ -147,6 +209,8 @@ export const persistAuthToken = (
   expiresIn?: number,
   refreshToken?: string | null
 ) => {
+  if (!token) return;
+
   if (typeof rememberMe === "boolean" || typeof expiresIn === "number" || refreshToken !== undefined) {
     TokenService.setToken(token, rememberMe ?? false, expiresIn, refreshToken);
   }
@@ -163,7 +227,7 @@ export const clearPersistedAuth = () => {
 
 const attachDefaultAuthorization = () => {
   const token = getAuthToken();
-  if (!token) return;
+  if (!token || token === "__admin_cookie_session__") return;
 
   api.defaults.headers.common.Authorization = `Bearer ${token}`;
   apiUpload.defaults.headers.common.Authorization = `Bearer ${token}`;
@@ -178,18 +242,19 @@ const handleUnauthorizedResponse = async (
   const status = error.response?.status;
   const requestUrl = String(error.config?.url ?? "");
   const isAuthFlowRequest =
-    requestUrl.includes("/v1/admin/login") ||
-    requestUrl.includes("/v1/admin/register") ||
+    requestUrl.includes(ADMIN_SESSION_ENDPOINTS.login) ||
+    requestUrl.includes(ADMIN_SESSION_ENDPOINTS.register) ||
+    requestUrl.includes(ADMIN_SESSION_ENDPOINTS.logout) ||
     requestUrl.includes("/sanctum/csrf-cookie");
 
-  if (status === 401 && !isAuthFlowRequest && usesBearerToken(requestUrl)) {
+  if (status === 401 && !isAuthFlowRequest && usesAuthenticatedApi(requestUrl)) {
     const sessionRole = getSessionRole();
     const originalRequest = (error.config ?? {}) as Record<string, unknown> & {
       _retry?: boolean;
       headers?: Record<string, string>;
     };
 
-    if (!originalRequest._retry) {
+    if (!originalRequest._retry && isCustomerApiPath(requestUrl)) {
       originalRequest._retry = true;
       const newToken = await TokenService.refreshToken();
 
@@ -255,7 +320,26 @@ const retryOnCsrfMismatch = async (
 api.interceptors.request.use(
   async (config) => {
     const method = String(config.method ?? "get").toLowerCase();
-    const requestUrl = String(config.url ?? "");
+    const originalUrl = String(config.url ?? "");
+    const sessionRole = getSessionRole();
+    const requestUrl = originalUrl.startsWith(ADMIN_PROXY_PREFIX) || originalUrl.startsWith(ADMIN_STOREFRONT_PROXY_PREFIX)
+      ? originalUrl
+      : isAdminApiPath(originalUrl)
+        ? buildAdminProxyUrl(originalUrl)
+        : sessionRole === "admin" && isCustomerApiPath(originalUrl)
+          ? buildAdminStorefrontProxyUrl(originalUrl)
+          : isCustomerApiPath(originalUrl)
+            ? buildStorefrontProxyUrl(originalUrl)
+            : originalUrl;
+
+    if (requestUrl !== originalUrl) {
+      config.baseURL = "";
+      config.url = requestUrl;
+    }
+
+    if (isAppInternalApiUrl(String(config.url ?? ""))) {
+      config.baseURL = "";
+    }
 
     if (["post", "put", "patch", "delete"].includes(method) && shouldUseCsrfCookie(requestUrl)) {
       await ensureCsrfCookie();
@@ -263,7 +347,7 @@ api.interceptors.request.use(
     }
 
     const token = getAuthToken();
-    if (token && usesBearerToken(requestUrl)) {
+    if (token && token !== "__admin_cookie_session__" && usesBearerToken(requestUrl)) {
       config.headers.Authorization = `Bearer ${token}`;
     } else if (config.headers?.Authorization) {
       delete config.headers.Authorization;
@@ -291,7 +375,26 @@ api.interceptors.request.use(
 apiUpload.interceptors.request.use(
   async (config) => {
     const method = String(config.method ?? "get").toLowerCase();
-    const requestUrl = String(config.url ?? "");
+    const originalUrl = String(config.url ?? "");
+    const sessionRole = getSessionRole();
+    const requestUrl = originalUrl.startsWith(ADMIN_PROXY_PREFIX) || originalUrl.startsWith(ADMIN_STOREFRONT_PROXY_PREFIX)
+      ? originalUrl
+      : isAdminApiPath(originalUrl)
+        ? buildAdminProxyUrl(originalUrl)
+        : sessionRole === "admin" && isCustomerApiPath(originalUrl)
+          ? buildAdminStorefrontProxyUrl(originalUrl)
+          : isCustomerApiPath(originalUrl)
+            ? buildStorefrontProxyUrl(originalUrl)
+            : originalUrl;
+
+    if (requestUrl !== originalUrl) {
+      config.baseURL = "";
+      config.url = requestUrl;
+    }
+
+    if (isAppInternalApiUrl(String(config.url ?? ""))) {
+      config.baseURL = "";
+    }
 
     if (["post", "put", "patch", "delete"].includes(method) && shouldUseCsrfCookie(requestUrl)) {
       await ensureCsrfCookie();
@@ -299,7 +402,7 @@ apiUpload.interceptors.request.use(
     }
 
     const token = getAuthToken();
-    if (token && usesBearerToken(requestUrl)) {
+    if (token && token !== "__admin_cookie_session__" && usesBearerToken(requestUrl)) {
       config.headers.Authorization = `Bearer ${token}`;
     } else if (config.headers?.Authorization) {
       delete config.headers.Authorization;

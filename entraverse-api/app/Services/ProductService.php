@@ -76,6 +76,57 @@ class ProductService
         ];
     }
 
+    public function findPublicByIdentifierOrSlug(string $identifier): ?Product
+    {
+        $trimmedIdentifier = trim($identifier);
+        if ($trimmedIdentifier === '') {
+            return null;
+        }
+
+        $catalogQuery = $this->newCatalogQuery()->visible();
+
+        if (Str::isUuid($trimmedIdentifier)) {
+            return $catalogQuery->whereKey($trimmedIdentifier)->first();
+        }
+
+        $normalizedSlug = Str::slug($trimmedIdentifier);
+        if ($normalizedSlug === '') {
+            return null;
+        }
+
+        $searchSeed = str_replace('-', ' ', $normalizedSlug);
+        $tokens = collect(explode('-', $normalizedSlug))
+            ->map(fn (string $token): string => trim($token))
+            ->filter(fn (string $token): bool => $token !== '' && strlen($token) >= 2)
+            ->unique()
+            ->values();
+
+        $candidates = $this->newCatalogQuery()
+            ->visible()
+            ->where(function (Builder $query) use ($searchSeed, $tokens): void {
+                if ($searchSeed !== '') {
+                    $query->whereRaw('LOWER(name) LIKE ?', ['%' . strtolower($searchSeed) . '%']);
+                }
+
+                foreach ($tokens as $token) {
+                    $query->orWhereRaw('LOWER(name) LIKE ?', ['%' . strtolower($token) . '%']);
+                }
+            })
+            ->limit(50)
+            ->get();
+
+        $exactCandidate = $candidates->first(
+            fn (Product $product): bool => Str::slug((string) $product->name) === $normalizedSlug
+        );
+        if ($exactCandidate) {
+            return $exactCandidate;
+        }
+
+        return $catalogQuery
+            ->get()
+            ->first(fn (Product $product): bool => Str::slug((string) $product->name) === $normalizedSlug);
+    }
+
     private function buildCatalogQuery(array $filters): Builder
     {
         $driver = DB::connection()->getDriverName();
@@ -90,12 +141,7 @@ class ProductService
         $excludeFailedSync = filter_var($filters['exclude_failed_sync'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $onlySyncActivated = filter_var($filters['only_sync_activated'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
-        return Product::query()
-            ->select('products.*')
-            ->with([
-                'category:id,name',
-                'brandModel:id,name,slug,logo,is_active',
-            ])
+        return $this->newCatalogQuery()
             ->when($applyVisible, fn (Builder $query) => $query->visible())
             ->when($status !== null, fn (Builder $query) => $query->whereRaw('LOWER(COALESCE(status, product_status)) = ?', [$status]))
             ->when($isFeatured !== null, fn (Builder $query) => $query->where('is_featured', $isFeatured))
@@ -122,6 +168,16 @@ class ProductService
             ->when($excludeFailedSync, function (Builder $query) use ($driver) {
                 $query->whereRaw($this->resolveMekariSyncStatusExpression($driver) . " <> 'failed'");
             });
+    }
+
+    private function newCatalogQuery(): Builder
+    {
+        return Product::query()
+            ->select('products.*')
+            ->with([
+                'category:id,name',
+                'brandModel:id,name,slug,logo,is_active',
+            ]);
     }
 
     private function applyCatalogSorting(Builder $query, array $filters): void
@@ -542,6 +598,8 @@ class ProductService
             $calculatedStock,
             $product?->stock_status
         );
+        $barcode = $this->cleanText((string) ($validated['barcode'] ?? $product?->barcode ?? ''));
+        $barcode = $barcode !== '' ? $barcode : null;
         $isFeatured = array_key_exists('is_featured', $validated)
             ? (bool) $validated['is_featured']
             : (bool) ($product?->is_featured ?? false);
@@ -558,6 +616,17 @@ class ProductService
             ];
         }
 
+        if ($this->shouldLockProductMediaState($validated, $uploadedImages)) {
+            $jurnalMetadata['local_media_state'] = [
+                ...((is_array($existingJurnalMetadata['local_media_state'] ?? null)
+                    ? $existingJurnalMetadata['local_media_state']
+                    : [])),
+                'locked' => true,
+                'source' => 'admin_edit',
+                'updated_at' => now()->toISOString(),
+            ];
+        }
+
         return [
             'name' => $this->cleanText((string) ($validated['name'] ?? $product?->name ?? '')),
             'category' => $categoryName,
@@ -566,6 +635,7 @@ class ProductService
             'brand_id' => $brandId !== '' ? $brandId : null,
             'description' => $this->cleanDescription((string) ($validated['description'] ?? $product?->description ?? '')),
             'trade_in' => (bool) ($validated['trade_in'] ?? $product?->trade_in ?? false),
+            'barcode' => $barcode,
             'inventory' => $inventory,
             'variants' => $this->normalizeVariantsWithDefaults($validated['variants'] ?? ($product?->variants ?? [])),
             'variant_pricing' => $variantPricing,
@@ -595,6 +665,14 @@ class ProductService
         return array_key_exists('price', $inventory)
             || array_key_exists('weight', $inventory)
             || array_key_exists('total_stock', $inventory);
+    }
+
+    /**
+     * @param  array<int, UploadedFile>  $uploadedImages
+     */
+    private function shouldLockProductMediaState(array $validated, array $uploadedImages): bool
+    {
+        return array_key_exists('photos', $validated) || $uploadedImages !== [];
     }
 
     private function normalizeVariantPricing(mixed $value): array

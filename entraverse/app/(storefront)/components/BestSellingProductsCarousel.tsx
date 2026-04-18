@@ -7,9 +7,15 @@ import ProductCard from "./ProductCard";
 
 type BestSellingProductsCarouselProps = {
   products: StorefrontProduct[];
+  prevLabel?: string;
+  nextLabel?: string;
 };
 
-export default function BestSellingProductsCarousel({ products }: BestSellingProductsCarouselProps) {
+export default function BestSellingProductsCarousel({
+  products,
+  prevLabel = "Produk terlaris sebelumnya",
+  nextLabel = "Produk terlaris berikutnya",
+}: BestSellingProductsCarouselProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [canScrollPrev, setCanScrollPrev] = useState(false);
   const [canScrollNext, setCanScrollNext] = useState(products.length > 6);
@@ -38,7 +44,7 @@ export default function BestSellingProductsCarousel({ products }: BestSellingPro
     const element = scrollRef.current;
     if (!element) return;
 
-    const card = element.querySelector<HTMLElement>("[data-best-selling-card]");
+    const card = element.querySelector<HTMLElement>("[data-product-carousel-card]");
     const gap = 24;
     const distance = (card?.offsetWidth ?? element.clientWidth * 0.8) + gap;
 
@@ -63,7 +69,7 @@ export default function BestSellingProductsCarousel({ products }: BestSellingPro
       {canScrollPrev ? (
         <button
           type="button"
-          aria-label="Produk terlaris sebelumnya"
+          aria-label={prevLabel}
           onClick={() => scrollByCards("prev")}
           className="best-selling-nav left-0 md:-left-2 xl:-left-5"
         >
@@ -77,7 +83,7 @@ export default function BestSellingProductsCarousel({ products }: BestSellingPro
         className="best-selling-track scrollbar-hidden gap-5 overflow-x-auto px-9 py-2 md:px-12 lg:gap-6 xl:px-0"
       >
         {products.map((product) => (
-          <div key={product.id} data-best-selling-card className="min-w-0">
+          <div key={product.id} data-product-carousel-card className="min-w-0">
             <ProductCard product={product} />
           </div>
         ))}
@@ -85,7 +91,7 @@ export default function BestSellingProductsCarousel({ products }: BestSellingPro
 
       <button
         type="button"
-        aria-label="Produk terlaris berikutnya"
+        aria-label={nextLabel}
         onClick={() => scrollByCards("next")}
         disabled={!canScrollNext}
         className="best-selling-nav right-0 md:-right-2 xl:-right-5"

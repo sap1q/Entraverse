@@ -1,9 +1,10 @@
 export { API_BASE_URL } from "@/lib/api-config";
+import { ADMIN_SESSION_ENDPOINTS } from "@/src/constants/auth-cookies";
 
 export const AUTH_ENDPOINTS = {
-  login: "/v1/admin/login",
-  register: "/v1/admin/register",
-  logout: "/v1/admin/logout",
+  login: ADMIN_SESSION_ENDPOINTS.login,
+  register: ADMIN_SESSION_ENDPOINTS.register,
+  logout: ADMIN_SESSION_ENDPOINTS.logout,
   profile: "/v1/admin/profile",
 } as const;
 

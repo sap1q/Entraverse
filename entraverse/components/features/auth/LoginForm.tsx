@@ -51,9 +51,12 @@ export default function LoginForm() {
             />
           </div>
 
-          <h1 className="mb-8 text-center text-3xl font-semibold tracking-tight text-slate-900">
-            Selamat Datang
+          <h1 className="mb-2 text-center text-3xl font-semibold tracking-tight text-slate-900">
+            Masuk Admin
           </h1>
+          <p className="mb-8 text-center text-sm text-slate-500">
+            Khusus superadmin, staff, dan editor Entraverse.
+          </p>
 
           {error ? (
             <div className="mb-4 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -122,10 +125,18 @@ export default function LoginForm() {
           </form>
 
           <p className="mt-6 text-center text-sm text-slate-600">
-            Belum punya akun?{" "}
-            <Link href="/auth/register" className="font-semibold text-sky-600 hover:underline">
+            Belum punya akun customer?{" "}
+            <Link href="/register" className="font-semibold text-sky-600 hover:underline">
               Daftar
             </Link>
+          </p>
+
+          <p className="mt-3 text-center text-xs text-slate-500">
+            Customer login lewat{" "}
+            <Link href="/login" className="font-semibold text-slate-700 hover:underline">
+              /login
+            </Link>
+            . Akun admin dibuat oleh superadmin.
           </p>
         </section>
       </main>

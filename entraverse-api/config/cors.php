@@ -1,5 +1,16 @@
 <?php
 
+$defaultAllowedOrigins = array_values(array_filter([
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    env('APP_FRONTEND_URL'),
+]));
+
+$configuredAllowedOrigins = array_map(
+    static fn ($origin) => trim((string) $origin),
+    explode(',', (string) env('CORS_ALLOWED_ORIGINS', implode(',', $defaultAllowedOrigins)))
+);
+
 return [
 
     /*
@@ -15,11 +26,11 @@ return [
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie', 'login', 'register', 'logout', 'forgot-password', 'reset-password'],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 
-    'allowed_origins' => ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    'allowed_origins' => array_values(array_unique(array_filter($configuredAllowedOrigins))),
 
     'allowed_origins_patterns' => [],
 

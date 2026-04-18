@@ -38,7 +38,7 @@ export interface ApiResponse<T> {
 }
 
 export interface AuthPayload {
-  token: string;
+  token?: string | null;
   token_type: "Bearer";
   admin: Admin;
   expires_in?: number;

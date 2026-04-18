@@ -3,7 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   Bell,
   BadgeCheck,
@@ -21,16 +22,16 @@ import {
   ReceiptText,
   Search,
   Shield,
-  ShoppingBag,
   ShoppingCart,
   Store,
   Tag,
   Truck,
-  User,
 } from "lucide-react";
 import { authApi } from "@/lib/api/auth";
 import { clearPersistedAuth } from "@/lib/axios";
-import { buildAuthLoginRedirect, getSessionRole, type SessionRole } from "@/src/lib/auth/access";
+import { getCachedProfileAvatar, getNameInitials } from "@/lib/utils/media";
+import { getStoredAdmin, setStoredAdmin } from "@/lib/utils/storage";
+import { buildAdminLoginRedirect, getSessionRole, type SessionRole } from "@/src/lib/auth/access";
 import { AUTH_STATE_EVENT_NAME } from "@/src/lib/auth/tokens";
 
 type AdminLayoutProps = {
@@ -41,6 +42,14 @@ type MenuItem = {
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+};
+
+type AdminHeaderProfileSnapshot = {
+  avatarUrl: string | null;
+  email: string | null;
+  isLoggedIn: boolean;
+  name: string | null;
+  role: string | null;
 };
 
 const ecommerceItems: MenuItem[] = [
@@ -58,9 +67,70 @@ const vendorItems: MenuItem[] = [
   { label: "Vendor Pengiriman", href: "/admin/vendor-shipping", icon: Truck },
 ];
 
+const serverAdminHeaderProfileSnapshot: AdminHeaderProfileSnapshot = {
+  avatarUrl: null,
+  email: null,
+  isLoggedIn: false,
+  name: null,
+  role: null,
+};
+
+let cachedAdminHeaderProfileSnapshot = serverAdminHeaderProfileSnapshot;
+
+const getAdminHeaderProfileServerSnapshot = (): AdminHeaderProfileSnapshot =>
+  serverAdminHeaderProfileSnapshot;
+
+const getAdminHeaderProfileSnapshot = (): AdminHeaderProfileSnapshot => {
+  const storedAdmin = getStoredAdmin();
+  const nextSnapshot: AdminHeaderProfileSnapshot = {
+    avatarUrl: getCachedProfileAvatar(),
+    email: storedAdmin?.email ?? null,
+    isLoggedIn: getSessionRole() === "admin",
+    name: storedAdmin?.name ?? null,
+    role: storedAdmin?.role ?? null,
+  };
+
+  if (
+    cachedAdminHeaderProfileSnapshot.avatarUrl === nextSnapshot.avatarUrl &&
+    cachedAdminHeaderProfileSnapshot.email === nextSnapshot.email &&
+    cachedAdminHeaderProfileSnapshot.isLoggedIn === nextSnapshot.isLoggedIn &&
+    cachedAdminHeaderProfileSnapshot.name === nextSnapshot.name &&
+    cachedAdminHeaderProfileSnapshot.role === nextSnapshot.role
+  ) {
+    return cachedAdminHeaderProfileSnapshot;
+  }
+
+  cachedAdminHeaderProfileSnapshot = nextSnapshot;
+  return cachedAdminHeaderProfileSnapshot;
+};
+
+const subscribeAdminHeaderProfile = (callback: () => void) => {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+
+  const notify = () => callback();
+
+  window.addEventListener("storage", notify);
+  window.addEventListener("storefront-profile-updated", notify as EventListener);
+  window.addEventListener(AUTH_STATE_EVENT_NAME, notify as EventListener);
+
+  return () => {
+    window.removeEventListener("storage", notify);
+    window.removeEventListener("storefront-profile-updated", notify as EventListener);
+    window.removeEventListener(AUTH_STATE_EVENT_NAME, notify as EventListener);
+  };
+};
+
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const shouldReduceMotion = useReducedMotion();
+  const headerProfile = useSyncExternalStore(
+    subscribeAdminHeaderProfile,
+    getAdminHeaderProfileSnapshot,
+    getAdminHeaderProfileServerSnapshot
+  );
 
   const [authReady, setAuthReady] = useState(false);
   const [sessionRole, setSessionRole] = useState<SessionRole>("guest");
@@ -99,6 +169,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       pathname.startsWith("/admin/penagihan"),
     [pathname]
   );
+
+  const submenuTransition = shouldReduceMotion
+    ? { duration: 0 }
+    : {
+        height: { duration: 0.28, ease: [0.22, 1, 0.36, 1] as const },
+        opacity: { duration: 0.18, ease: "easeOut" as const },
+      };
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -157,7 +234,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     }
 
     const redirectTarget = pathname || "/admin/dashboard";
-    router.replace(buildAuthLoginRedirect(redirectTarget));
+    router.replace(buildAdminLoginRedirect(redirectTarget));
   }, [authReady, pathname, router, sessionRole]);
 
   useEffect(() => {
@@ -184,6 +261,50 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [profileMenuOpen]);
+
+  useEffect(() => {
+    if (isProductGroupActive) {
+      setProductOpen(true);
+    }
+  }, [isProductGroupActive]);
+
+  useEffect(() => {
+    if (isSalesGroupActive) {
+      setSalesOpen(true);
+    }
+  }, [isSalesGroupActive]);
+
+  useEffect(() => {
+    if (!authReady || sessionRole !== "admin") {
+      return;
+    }
+
+    let isActive = true;
+
+    const syncAdminProfile = async () => {
+      try {
+        const response = await authApi.getProfile();
+
+        if (!isActive) {
+          return;
+        }
+
+        setStoredAdmin(response.data);
+      } catch {
+        // Best effort sync for header profile.
+      }
+    };
+
+    void syncAdminProfile();
+
+    return () => {
+      isActive = false;
+    };
+  }, [authReady, sessionRole]);
+
+  const displayName = headerProfile.name ?? "Admin";
+  const displaySubtitle = headerProfile.email ?? "Admin Panel";
+  const displayInitials = getNameInitials(displayName, "A");
 
   if (isCheckingAccess) {
     return (
@@ -260,49 +381,60 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 />
               </button>
 
-              {productOpen ? (
-                <div className="ml-5 space-y-1 border-l border-gray-200 pl-4">
-                  <Link
-                    href="/admin/master-produk"
-                    onClick={closeMobileSidebar}
-                    className={menuItemClass(pathname.startsWith("/admin/master-produk"))}
+              <AnimatePresence initial={false}>
+                {productOpen ? (
+                  <motion.div
+                    key="product-submenu"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={submenuTransition}
+                    className="overflow-hidden"
                   >
-                    {pathname.startsWith("/admin/master-produk") ? (
-                      <span className="absolute left-0 top-[calc(50%-12px)] h-6 w-1 rounded-r bg-[#2563EB]" />
-                    ) : null}
-                    <span className={menuIconSlotClass}>
-                      <Box className={menuIconClass} />
-                    </span>
-                    <span>Master Produk</span>
-                  </Link>
-                  <Link
-                    href="/admin/marketplace-produk"
-                    onClick={closeMobileSidebar}
-                    className={menuItemClass(pathname.startsWith("/admin/marketplace-produk"))}
-                  >
-                    {pathname.startsWith("/admin/marketplace-produk") ? (
-                      <span className="absolute left-0 top-[calc(50%-12px)] h-6 w-1 rounded-r bg-[#2563EB]" />
-                    ) : null}
-                    <span className={menuIconSlotClass}>
-                      <ShoppingCart className={menuIconClass} />
-                    </span>
-                    <span>Marketplace Produk</span>
-                  </Link>
-                  <Link
-                    href="/admin/products/inventory"
-                    onClick={closeMobileSidebar}
-                    className={menuItemClass(pathname.startsWith("/admin/products/inventory"))}
-                  >
-                    {pathname.startsWith("/admin/products/inventory") ? (
-                      <span className="absolute left-0 top-[calc(50%-12px)] h-6 w-1 rounded-r bg-[#2563EB]" />
-                    ) : null}
-                    <span className={menuIconSlotClass}>
-                      <Box className={menuIconClass} />
-                    </span>
-                    <span>Manajemen Stok</span>
-                  </Link>
-                </div>
-              ) : null}
+                    <div className="ml-5 space-y-1 border-l border-gray-200 pl-4 pt-1">
+                      <Link
+                        href="/admin/master-produk"
+                        onClick={closeMobileSidebar}
+                        className={menuItemClass(pathname.startsWith("/admin/master-produk"))}
+                      >
+                        {pathname.startsWith("/admin/master-produk") ? (
+                          <span className="absolute left-0 top-[calc(50%-12px)] h-6 w-1 rounded-r bg-[#2563EB]" />
+                        ) : null}
+                        <span className={menuIconSlotClass}>
+                          <Box className={menuIconClass} />
+                        </span>
+                        <span>Master Produk</span>
+                      </Link>
+                      <Link
+                        href="/admin/marketplace-produk"
+                        onClick={closeMobileSidebar}
+                        className={menuItemClass(pathname.startsWith("/admin/marketplace-produk"))}
+                      >
+                        {pathname.startsWith("/admin/marketplace-produk") ? (
+                          <span className="absolute left-0 top-[calc(50%-12px)] h-6 w-1 rounded-r bg-[#2563EB]" />
+                        ) : null}
+                        <span className={menuIconSlotClass}>
+                          <ShoppingCart className={menuIconClass} />
+                        </span>
+                        <span>Marketplace Produk</span>
+                      </Link>
+                      <Link
+                        href="/admin/products/inventory"
+                        onClick={closeMobileSidebar}
+                        className={menuItemClass(pathname.startsWith("/admin/products/inventory"))}
+                      >
+                        {pathname.startsWith("/admin/products/inventory") ? (
+                          <span className="absolute left-0 top-[calc(50%-12px)] h-6 w-1 rounded-r bg-[#2563EB]" />
+                        ) : null}
+                        <span className={menuIconSlotClass}>
+                          <Box className={menuIconClass} />
+                        </span>
+                        <span>Manajemen Stok</span>
+                      </Link>
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
 
               {/* Penjualan Dropdown */}
               <button
@@ -322,62 +454,73 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 />
               </button>
 
-              {salesOpen ? (
-                <div className="ml-5 space-y-1 border-l border-gray-200 pl-4">
-                  <Link
-                    href="/admin/pemesanan"
-                    onClick={closeMobileSidebar}
-                    className={menuItemClass(pathname.startsWith("/admin/pemesanan"))}
+              <AnimatePresence initial={false}>
+                {salesOpen ? (
+                  <motion.div
+                    key="sales-submenu"
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={submenuTransition}
+                    className="overflow-hidden"
                   >
-                    {pathname.startsWith("/admin/pemesanan") ? (
-                      <span className="absolute left-0 top-[calc(50%-12px)] h-6 w-1 rounded-r bg-[#2563EB]" />
-                    ) : null}
-                    <span className={menuIconSlotClass}>
-                      <ClipboardList className={menuIconClass} />
-                    </span>
-                    <span>Pemesanan</span>
-                  </Link>
-                  <Link
-                    href="/admin/trade-in"
-                    onClick={closeMobileSidebar}
-                    className={menuItemClass(pathname.startsWith("/admin/trade-in"))}
-                  >
-                    {pathname.startsWith("/admin/trade-in") ? (
-                      <span className="absolute left-0 top-[calc(50%-12px)] h-6 w-1 rounded-r bg-[#2563EB]" />
-                    ) : null}
-                    <span className={menuIconSlotClass}>
-                      <RefreshCcw className={menuIconClass} />
-                    </span>
-                    <span>Trade-In</span>
-                  </Link>
-                  <Link
-                    href="/admin/penawaran"
-                    onClick={closeMobileSidebar}
-                    className={menuItemClass(pathname.startsWith("/admin/penawaran"))}
-                  >
-                    {pathname.startsWith("/admin/penawaran") ? (
-                      <span className="absolute left-0 top-[calc(50%-12px)] h-6 w-1 rounded-r bg-[#2563EB]" />
-                    ) : null}
-                    <span className={menuIconSlotClass}>
-                      <FileText className={menuIconClass} />
-                    </span>
-                    <span>Penawaran</span>
-                  </Link>
-                  <Link
-                    href="/admin/penagihan"
-                    onClick={closeMobileSidebar}
-                    className={menuItemClass(pathname.startsWith("/admin/penagihan"))}
-                  >
-                    {pathname.startsWith("/admin/penagihan") ? (
-                      <span className="absolute left-0 top-[calc(50%-12px)] h-6 w-1 rounded-r bg-[#2563EB]" />
-                    ) : null}
-                    <span className={menuIconSlotClass}>
-                      <ReceiptText className={menuIconClass} />
-                    </span>
-                    <span>Penagihan</span>
-                  </Link>
-                </div>
-              ) : null}
+                    <div className="ml-5 space-y-1 border-l border-gray-200 pl-4 pt-1">
+                      <Link
+                        href="/admin/pemesanan"
+                        onClick={closeMobileSidebar}
+                        className={menuItemClass(pathname.startsWith("/admin/pemesanan"))}
+                      >
+                        {pathname.startsWith("/admin/pemesanan") ? (
+                          <span className="absolute left-0 top-[calc(50%-12px)] h-6 w-1 rounded-r bg-[#2563EB]" />
+                        ) : null}
+                        <span className={menuIconSlotClass}>
+                          <ClipboardList className={menuIconClass} />
+                        </span>
+                        <span>Pemesanan</span>
+                      </Link>
+                      <Link
+                        href="/admin/trade-in"
+                        onClick={closeMobileSidebar}
+                        className={menuItemClass(pathname.startsWith("/admin/trade-in"))}
+                      >
+                        {pathname.startsWith("/admin/trade-in") ? (
+                          <span className="absolute left-0 top-[calc(50%-12px)] h-6 w-1 rounded-r bg-[#2563EB]" />
+                        ) : null}
+                        <span className={menuIconSlotClass}>
+                          <RefreshCcw className={menuIconClass} />
+                        </span>
+                        <span>Trade-In</span>
+                      </Link>
+                      <Link
+                        href="/admin/penawaran"
+                        onClick={closeMobileSidebar}
+                        className={menuItemClass(pathname.startsWith("/admin/penawaran"))}
+                      >
+                        {pathname.startsWith("/admin/penawaran") ? (
+                          <span className="absolute left-0 top-[calc(50%-12px)] h-6 w-1 rounded-r bg-[#2563EB]" />
+                        ) : null}
+                        <span className={menuIconSlotClass}>
+                          <FileText className={menuIconClass} />
+                        </span>
+                        <span>Penawaran</span>
+                      </Link>
+                      <Link
+                        href="/admin/penagihan"
+                        onClick={closeMobileSidebar}
+                        className={menuItemClass(pathname.startsWith("/admin/penagihan"))}
+                      >
+                        {pathname.startsWith("/admin/penagihan") ? (
+                          <span className="absolute left-0 top-[calc(50%-12px)] h-6 w-1 rounded-r bg-[#2563EB]" />
+                        ) : null}
+                        <span className={menuIconSlotClass}>
+                          <ReceiptText className={menuIconClass} />
+                        </span>
+                        <span>Penagihan</span>
+                      </Link>
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
 
               {/* Other E-commerce menu items */}
               {ecommerceItems.map((item) => {
@@ -466,7 +609,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 type="button"
                 className="hidden items-center gap-1 rounded-lg border border-gray-100 px-2.5 py-1.5 text-xs font-medium text-slate-500 md:flex"
               >
-                Eng (US)
+                Indonesia
                 <ChevronRight className="h-3.5 w-3.5 rotate-90" />
               </button>
               <button
@@ -483,52 +626,67 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                   aria-haspopup="menu"
                   aria-expanded={profileMenuOpen}
                 >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-                    <User className="h-4 w-4" />
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-xs font-semibold text-slate-700">
+                    {headerProfile.avatarUrl ? (
+                      <span
+                        aria-label={displayName}
+                        className="h-full w-full bg-cover bg-center bg-no-repeat"
+                        role="img"
+                        style={{ backgroundImage: `url("${headerProfile.avatarUrl}")` }}
+                      />
+                    ) : (
+                      <span>{displayInitials}</span>
+                    )}
                   </div>
-                  <div className="hidden text-left md:block">
-                    <p className="text-xs font-medium text-slate-800">Admin</p>
-                    <p className="text-[11px] text-slate-500">Entraverse</p>
+                  <div className="hidden min-w-0 text-left md:block">
+                    <p className="truncate text-xs font-medium text-slate-800">{displayName}</p>
+                    <p className="truncate text-[11px] text-slate-500">{displaySubtitle}</p>
                   </div>
                   <ChevronDown className={`h-3.5 w-3.5 text-slate-500 transition-transform ${profileMenuOpen ? "rotate-180" : ""}`} />
                 </button>
 
-                {profileMenuOpen ? (
-                  <div className="absolute right-0 top-12 z-50 w-52 overflow-hidden rounded-xl border border-gray-100 bg-white p-1.5 shadow-lg">
-                    <Link
-                      href="/admin/marketplace-produk"
-                      onClick={() => setProfileMenuOpen(false)}
-                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+                <AnimatePresence initial={false}>
+                  {profileMenuOpen ? (
+                    <motion.div
+                      key="admin-profile-menu"
+                      initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                      transition={
+                        shouldReduceMotion
+                          ? { duration: 0 }
+                          : { duration: 0.18, ease: [0.22, 1, 0.36, 1] }
+                      }
+                      className="absolute right-0 top-12 z-50 w-52 overflow-hidden rounded-xl border border-gray-100 bg-white p-1.5 shadow-lg"
                     >
-                      <ShoppingBag className="h-4 w-4 text-slate-500" />
-                      <span>Marketplace</span>
-                    </Link>
+                      <Link
+                        href="/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setProfileMenuOpen(false)}
+                        className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+                      >
+                        <Store className="h-4 w-4 text-slate-500" />
+                        <span>Storefront</span>
+                      </Link>
 
-                    <Link
-                      href="/"
-                      onClick={() => setProfileMenuOpen(false)}
-                      className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
-                    >
-                      <Store className="h-4 w-4 text-slate-500" />
-                      <span>Storefront</span>
-                    </Link>
+                      <div className="my-1 border-t border-gray-100" />
 
-                    <div className="my-1 border-t border-gray-100" />
-
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setProfileMenuOpen(false);
-                        await handleLogout();
-                      }}
-                      disabled={isLoggingOut}
-                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <LogOut className="h-4 w-4" />
-                      <span>{isLoggingOut ? "Logging out..." : "Logout"}</span>
-                    </button>
-                  </div>
-                ) : null}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setProfileMenuOpen(false);
+                          await handleLogout();
+                        }}
+                        disabled={isLoggingOut}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <LogOut className="h-4 w-4" />
+                        <span>{isLoggingOut ? "Logging out..." : "Logout"}</span>
+                      </button>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
               </div>
             </div>
           </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownUp } from "lucide-react";
+import { ArrowDownUp, ChevronDown } from "lucide-react";
 import { useProductFilters } from "@/hooks/useProductFilters";
 import { SORT_OPTIONS } from "@/lib/constants/filters";
 import type { ProductFilters } from "@/types/product.types";
@@ -21,13 +21,13 @@ export const ProductSort = () => {
   };
 
   return (
-    <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
+    <label className="inline-flex min-h-[50px] w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 sm:w-auto">
       <ArrowDownUp className="h-4 w-4 text-slate-500" />
-      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Urutkan</span>
+      <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Urutkan</span>
       <select
         value={activeSort}
         onChange={(event) => handleChangeSort(event.target.value as NonNullable<ProductFilters["sort_by"]>)}
-        className="bg-transparent text-sm font-medium text-slate-700 outline-none"
+        className="min-w-0 flex-1 appearance-none bg-transparent pr-6 text-sm font-semibold text-slate-700 outline-none sm:flex-none"
       >
         {SORT_OPTIONS.map((option) => (
           <option key={option.value} value={option.value}>
@@ -35,6 +35,7 @@ export const ProductSort = () => {
           </option>
         ))}
       </select>
+      <ChevronDown className="pointer-events-none -ml-5 h-4 w-4 shrink-0 text-slate-500" />
     </label>
   );
 };

@@ -7,6 +7,14 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Entraverse",
   description: "Entraverse e-commerce storefront",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon.png", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({

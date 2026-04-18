@@ -81,18 +81,19 @@ export default function CategoryCard({ category, className }: CategoryCardProps)
     <Link
       href={href}
       className={cn(
-        "group flex flex-col items-center text-center",
+        "group flex flex-col items-center text-center transition-transform duration-300 ease-out",
         className
       )}
     >
       <div className="w-full">
-        <div className="mx-auto flex aspect-square w-full max-w-[150px] items-center justify-center overflow-hidden rounded-xl bg-[#dce8f9] p-5 transition-transform duration-300 ease-out group-hover:-translate-y-1">
+        <div className="relative mx-auto flex aspect-square w-full max-w-[150px] items-center justify-center overflow-hidden rounded-[1.15rem] bg-[linear-gradient(180deg,#e4eefc_0%,#dce8f9_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all duration-300 ease-out group-hover:-translate-y-1 group-hover:shadow-[0_14px_30px_rgba(148,163,184,0.22)]">
+          <div className="pointer-events-none absolute inset-x-4 top-3 h-6 rounded-full bg-white/30 blur-xl transition-opacity duration-300 group-hover:opacity-80" />
           {activeImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={activeImage}
               alt={category.name}
-              className="h-full w-full object-contain"
+              className="h-full w-full object-contain transition-transform duration-500 ease-out group-hover:scale-[1.06] group-hover:-rotate-2"
               loading="lazy"
               onError={() => {
                 setImageState((current) => {
@@ -108,7 +109,7 @@ export default function CategoryCard({ category, className }: CategoryCardProps)
             />
           ) : inlineSvg ? (
             <div
-              className="flex h-full w-full items-center justify-center [&_svg]:h-full [&_svg]:max-h-full [&_svg]:max-w-full [&_svg]:w-full"
+              className="flex h-full w-full items-center justify-center transition-transform duration-500 ease-out group-hover:scale-[1.05] [&_svg]:h-full [&_svg]:max-h-full [&_svg]:max-w-full [&_svg]:w-full"
               aria-hidden="true"
               dangerouslySetInnerHTML={{ __html: inlineSvg }}
             />
@@ -120,10 +121,10 @@ export default function CategoryCard({ category, className }: CategoryCardProps)
         </div>
       </div>
 
-      <h3 className="mt-3 text-sm font-medium leading-snug text-slate-900 md:text-[15px]">
+      <h3 className="mt-3 text-sm font-medium leading-snug text-slate-900 transition-transform duration-300 ease-out group-hover:-translate-y-0.5 md:text-[15px]">
         {category.name}
       </h3>
-      <span className="mt-1 text-xs font-medium text-slate-500 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+      <span className="mt-1 text-xs font-medium text-slate-500 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 motion-safe:translate-y-1">
         Lihat produk
       </span>
       <span className="sr-only">Buka kategori {category.name}</span>

@@ -33,6 +33,7 @@ export default function RegisterForm() {
   const [showPasswordConfirmation, setShowPasswordConfirmation] = useState(false);
 
   const strength = useMemo(() => getStrength(form.password), [form.password]);
+  const showPasswordStrength = form.password.trim().length > 0;
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -129,14 +130,18 @@ export default function RegisterForm() {
               {fieldErrors.password?.[0] ? (
                 <span className="text-xs text-rose-600">{fieldErrors.password[0]}</span>
               ) : null}
-              <div className="h-2 w-full rounded-full bg-slate-100">
-                <div
-                  className={`h-full rounded-full transition-all ${
-                    strength <= 1 ? "w-1/4 bg-rose-500" : strength === 2 ? "w-2/4 bg-amber-500" : strength === 3 ? "w-3/4 bg-blue-500" : "w-full bg-emerald-500"
-                  }`}
-                />
-              </div>
-              <p className="text-xs text-slate-500">Strength: {strength}/4</p>
+              {showPasswordStrength ? (
+                <>
+                  <div className="h-2 w-full rounded-full bg-slate-100">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        strength <= 1 ? "w-1/4 bg-rose-500" : strength === 2 ? "w-2/4 bg-amber-500" : strength === 3 ? "w-3/4 bg-blue-500" : "w-full bg-emerald-500"
+                      }`}
+                    />
+                  </div>
+                  <p className="text-xs text-slate-500">Strength: {strength}/4</p>
+                </>
+              ) : null}
             </div>
 
             <label htmlFor="password_confirmation" className="block space-y-1.5">

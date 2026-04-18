@@ -23,7 +23,7 @@ export const ProductInfo = ({ product, selectedPrice, selectedVariants, onVarian
   const specificationRows = useMemo(() => buildProductSpecificationRows(product), [product]);
 
   return (
-    <section className="rounded-2xl border border-transparent bg-white p-5 shadow-[0_12px_32px_-28px_rgba(15,23,42,0.45)]">
+    <section className="min-w-0 overflow-x-hidden rounded-2xl border border-transparent bg-white p-5 shadow-[0_12px_32px_-28px_rgba(15,23,42,0.45)]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-semibold leading-tight text-slate-900 md:text-3xl">{product.name}</h1>
@@ -44,15 +44,20 @@ export const ProductInfo = ({ product, selectedPrice, selectedVariants, onVarian
         <ProductAdminEditShortcut productId={product.id} />
       </div>
 
-      <div className="mt-5 flex items-end gap-3">
-        <p className="text-3xl font-bold text-slate-900 md:text-4xl">{formatCurrencyIDR(selectedPrice)}</p>
+      <div className="mt-5 min-w-0 flex flex-wrap items-end gap-3">
+        <p className="min-w-0 break-words text-3xl font-bold text-slate-900 md:text-4xl">{formatCurrencyIDR(selectedPrice)}</p>
         {typeof product.original_price === "number" && product.original_price > selectedPrice ? (
           <p className="pb-1 text-base text-slate-400 line-through">{formatCurrencyIDR(product.original_price)}</p>
         ) : null}
       </div>
 
       <div className="mt-6 border-t border-slate-100 pt-5">
-        <ProductVariantSelector variants={product.variants ?? []} selectedVariants={selectedVariants} onChange={onVariantChange} />
+        <ProductVariantSelector
+          variants={product.variants ?? []}
+          variantPricing={product.variant_pricing ?? []}
+          selectedVariants={selectedVariants}
+          onChange={onVariantChange}
+        />
       </div>
 
       <div className="mt-5 border-t border-slate-100 pt-4">

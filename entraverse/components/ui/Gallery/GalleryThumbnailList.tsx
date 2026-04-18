@@ -11,8 +11,15 @@ interface GalleryThumbnailListProps {
 }
 
 export const GalleryThumbnailList = ({ images, activeIndex, onSelect, productName }: GalleryThumbnailListProps) => {
+  const useWrappedDesktopLayout = images.length > 5;
+
   return (
-    <div className="order-2 flex gap-2 overflow-x-auto pb-1">
+    <div
+      className={cn(
+        "order-2 flex gap-2 overflow-x-auto pb-1",
+        useWrappedDesktopLayout && "md:flex-wrap md:gap-3 md:overflow-visible md:pb-0"
+      )}
+    >
       {images.map((image, index) => (
         <button
           key={`${image}-${index}`}

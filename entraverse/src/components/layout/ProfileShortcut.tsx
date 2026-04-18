@@ -2,11 +2,14 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
+import { authApi } from "@/lib/api/auth";
+import { storefrontAuthApi } from "@/lib/api/storefront-auth";
 import { userProfileApi } from "@/lib/api/user-profile";
 import { clearPersistedAuth } from "@/lib/axios";
 import { getCachedProfileAvatar, getNameInitials, resolveApiAssetUrl } from "@/lib/utils/media";
-import { getStoredAdmin, getToken } from "@/lib/utils/storage";
+import { getStoredAdmin } from "@/lib/utils/storage";
 import { ProfileDropdown } from "@/src/components/layout/ProfileDropdown";
+import { getSessionRole } from "@/src/lib/auth/access";
 import { AUTH_STATE_EVENT_NAME } from "@/src/lib/auth/tokens";
 
 type ProfileShortcutSnapshot = {
@@ -36,14 +39,20 @@ const serverProfileShortcutSnapshot: ProfileShortcutSnapshot = {
   role: null,
 };
 
+const normalizeRole = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
+};
+
 let cachedProfileShortcutSnapshot: ProfileShortcutSnapshot = serverProfileShortcutSnapshot;
 
 const getProfileShortcutServerSnapshot = (): ProfileShortcutSnapshot => serverProfileShortcutSnapshot;
 
 const getProfileShortcutSnapshot = (): ProfileShortcutSnapshot => {
   const storedAdmin = getStoredAdmin();
+  const sessionRole = getSessionRole();
   const nextSnapshot: ProfileShortcutSnapshot = {
-    isLoggedIn: Boolean(getToken()),
+    isLoggedIn: sessionRole !== "guest",
     name: storedAdmin?.name ?? null,
     email: storedAdmin?.email ?? null,
     role: storedAdmin?.role ?? null,
@@ -82,9 +91,10 @@ const subscribeProfileShortcut = (callback: () => void) => {
 
 type ProfileShortcutProps = {
   variant?: "default" | "overlay";
+  size?: "default" | "compact";
 };
 
-export function ProfileShortcut({ variant = "default" }: ProfileShortcutProps) {
+export function ProfileShortcut({ variant = "default", size = "default" }: ProfileShortcutProps) {
   const router = useRouter();
   const profileSnapshot = useSyncExternalStore(
     subscribeProfileShortcut,
@@ -149,13 +159,28 @@ export function ProfileShortcut({ variant = "default" }: ProfileShortcutProps) {
     };
   }, [profileSnapshot.email, profileSnapshot.isLoggedIn, profileSnapshot.name, subjectKey]);
 
+  const normalizedRole = normalizeRole(profileSnapshot.role);
   const canAccessAdminPanel =
-    profileSnapshot.role === "superadmin" || profileSnapshot.role === "admin";
+    getSessionRole() === "admin" ||
+    normalizedRole === "superadmin" ||
+    normalizedRole === "admin";
 
   const handleLogout = () => {
-    clearPersistedAuth();
-    router.push("/");
-    router.refresh();
+    const currentSessionRole = getSessionRole();
+
+    if (currentSessionRole === "admin") {
+      void authApi.logout().finally(() => {
+        router.push("/");
+        router.refresh();
+      });
+      return;
+    }
+
+    void storefrontAuthApi.logout().finally(() => {
+      clearPersistedAuth();
+      router.push("/");
+      router.refresh();
+    });
   };
 
   const displayName = activeProfileDetails?.name ?? profileSnapshot.name ?? "Godzilla D. White";
@@ -164,6 +189,7 @@ export function ProfileShortcut({ variant = "default" }: ProfileShortcutProps) {
   return (
     <ProfileDropdown
       variant={variant}
+      size={size}
       isLoggedIn={profileSnapshot.isLoggedIn}
       user={{
         name: displayName,
@@ -175,8 +201,8 @@ export function ProfileShortcut({ variant = "default" }: ProfileShortcutProps) {
         isOnline: profileSnapshot.isLoggedIn,
       }}
       onLogout={handleLogout}
-      guestRegisterHref="/auth/register"
-      guestLoginHref="/auth/login"
+      guestRegisterHref="/register"
+      guestLoginHref="/login"
       accountHref="/account/profile"
       addressHref="/account/addresses"
       ordersHref="/transaksi"

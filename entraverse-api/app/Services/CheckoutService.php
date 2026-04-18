@@ -13,6 +13,7 @@ use App\Models\StockMutation;
 use App\Models\TradeInTransaction;
 use App\Models\User;
 use App\Models\UserAddress;
+use App\Support\SharedInventory;
 use Carbon\Carbon;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -957,11 +958,21 @@ class CheckoutService
             }
 
             $warehouseStock[$warehouse] = $currentStock - (int) $item->quantity;
-            $targetVariant['warehouse_stock'] = $warehouseStock;
-            $targetVariant['stock'] = (int) collect($warehouseStock)->sum();
-            $variantRows[$targetIndex] = $targetVariant;
+            $targetGroupKey = (string) ($targetVariant['shared_inventory_key'] ?? SharedInventory::groupKeyForVariant($targetVariant));
 
-            $updatedTotalStock = (int) collect($variantRows)->sum(fn (array $row): int => (int) ($row['stock'] ?? 0));
+            foreach ($variantRows as $index => $variantRow) {
+                $rowGroupKey = (string) ($variantRow['shared_inventory_key'] ?? SharedInventory::groupKeyForVariant($variantRow));
+                if ($rowGroupKey !== $targetGroupKey) {
+                    continue;
+                }
+
+                $variantRow['warehouse'] = $warehouse;
+                $variantRow['warehouse_stock'] = $warehouseStock;
+                $variantRow['stock'] = (int) collect($warehouseStock)->sum();
+                $variantRows[$index] = $variantRow;
+            }
+
+            $updatedTotalStock = SharedInventory::totalStockFromRows($variantRows);
             $inventory = is_array($product->inventory) ? $product->inventory : [];
             $inventory['total_stock'] = $updatedTotalStock;
 
@@ -1026,11 +1037,21 @@ class CheckoutService
             }
 
             $warehouseStock[$warehouse] = $currentStock - $quantity;
-            $targetVariant['warehouse_stock'] = $warehouseStock;
-            $targetVariant['stock'] = (int) collect($warehouseStock)->sum();
-            $variantRows[$targetIndex] = $targetVariant;
+            $targetGroupKey = (string) ($targetVariant['shared_inventory_key'] ?? SharedInventory::groupKeyForVariant($targetVariant));
 
-            $updatedTotalStock = (int) collect($variantRows)->sum(fn (array $row): int => (int) ($row['stock'] ?? 0));
+            foreach ($variantRows as $index => $variantRow) {
+                $rowGroupKey = (string) ($variantRow['shared_inventory_key'] ?? SharedInventory::groupKeyForVariant($variantRow));
+                if ($rowGroupKey !== $targetGroupKey) {
+                    continue;
+                }
+
+                $variantRow['warehouse'] = $warehouse;
+                $variantRow['warehouse_stock'] = $warehouseStock;
+                $variantRow['stock'] = (int) collect($warehouseStock)->sum();
+                $variantRows[$index] = $variantRow;
+            }
+
+            $updatedTotalStock = SharedInventory::totalStockFromRows($variantRows);
             $inventory = is_array($product->inventory) ? $product->inventory : [];
             $inventory['total_stock'] = $updatedTotalStock;
 
@@ -1339,7 +1360,7 @@ class CheckoutService
             ];
         }
 
-        return array_values(array_map(function (array $row) use ($product): array {
+        $normalizedRows = array_values(array_map(function (array $row) use ($product): array {
             $normalized = $row;
             $warehouse = $this->resolveWarehouse($normalized, $product);
             $normalized['warehouse'] = $warehouse;
@@ -1353,6 +1374,16 @@ class CheckoutService
 
             return $normalized;
         }, $rows));
+
+        $inventory = is_array($product->inventory) ? $product->inventory : [];
+        $fallbackWarehouse = trim((string) ($inventory['warehouse'] ?? ''));
+        $fallbackStock = (int) ($inventory['total_stock'] ?? $product->stock ?? 0);
+
+        return SharedInventory::synchronizeVariantRows(
+            $normalizedRows,
+            $fallbackStock,
+            $fallbackWarehouse !== '' ? $fallbackWarehouse : 'Gudang Utama'
+        );
     }
 
     /**

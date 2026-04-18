@@ -11,7 +11,9 @@ use App\Models\Admin;
 use App\Services\Auth\AuthService;
 use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Laravel\Sanctum\PersonalAccessToken;
 use Throwable;
 
 class RegisterController extends Controller
@@ -22,13 +24,36 @@ class RegisterController extends Controller
     {
     }
 
+    private function resolveActor(Request $request): ?Admin
+    {
+        $user = $request->user();
+        if ($user instanceof Admin) {
+            return $user;
+        }
+
+        $bearerToken = $request->bearerToken();
+        if (! $bearerToken) {
+            return null;
+        }
+
+        $accessToken = PersonalAccessToken::findToken($bearerToken);
+        $tokenable = $accessToken?->tokenable;
+
+        return $tokenable instanceof Admin ? $tokenable : null;
+    }
+
     public function register(RegisterRequest $request): JsonResponse
     {
-        /** @var Admin|null $actor */
-        $actor = $request->user();
+        $actor = $this->resolveActor($request);
 
-        $canBootstrap = ! Admin::query()->exists();
-        if (! $canBootstrap && (! $actor || $actor->role !== 'superadmin')) {
+        $hasAdmins = Admin::query()->exists();
+        $allowBootstrap = filter_var(env('ALLOW_ADMIN_BOOTSTRAP', false), FILTER_VALIDATE_BOOL);
+
+        if (! $hasAdmins && ! $allowBootstrap) {
+            return $this->error('Bootstrap admin publik dinonaktifkan. Gunakan seeder atau CLI.', 403);
+        }
+
+        if ($hasAdmins && (! $actor || $actor->role !== 'superadmin')) {
             return $this->error('Hanya super admin yang bisa mendaftarkan admin baru.', 403);
         }
 

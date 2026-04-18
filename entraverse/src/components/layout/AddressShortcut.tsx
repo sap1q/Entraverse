@@ -1,11 +1,12 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { MapPin } from "lucide-react";
+import { MapPin, Plus } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAddress } from "@/hooks/useAddress";
 import { cn } from "@/lib/utils";
+import { buildStorefrontLoginRedirect, getSessionRole } from "@/src/lib/auth/access";
 
 const panelMotion = {
   hidden: { opacity: 0, scale: 0, y: -10 },
@@ -56,6 +57,13 @@ export function AddressShortcut({
   } = useAddress();
   const rootRef = useRef<HTMLDivElement>(null);
   const addressLabel = useMemo(() => getAddressLabel(selectedAddressLocation), [selectedAddressLocation]);
+  const isCustomerSession = getSessionRole() === "customer";
+  const addAddressHref = isCustomerSession
+    ? "/account/addresses/create"
+    : buildStorefrontLoginRedirect("/account/addresses/create");
+  const manageAddressHref = isCustomerSession
+    ? "/account/addresses"
+    : buildStorefrontLoginRedirect("/account/addresses");
 
   useEffect(() => {
     if (!open) return;
@@ -174,14 +182,18 @@ export function AddressShortcut({
 
             {!loading && !error && addresses.length === 0 ? (
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-4 text-center text-sm text-slate-500">
-                Belum ada alamat tersimpan.
-                <Link
-                  href="/account/addresses/create"
-                  onClick={() => setOpen(false)}
-                  className="mt-2 inline-flex text-xs font-semibold text-blue-600 hover:text-blue-700"
-                >
-                  Tambah Alamat
-                </Link>
+                <div className="flex flex-col items-center justify-center gap-3">
+                  <span>{isCustomerSession ? "Belum ada alamat tersimpan." : "Login dulu untuk menambahkan alamat."}</span>
+                  <Link
+                    href={addAddressHref}
+                    onClick={() => setOpen(false)}
+                    aria-label={isCustomerSession ? "Tambah alamat" : "Login untuk tambah alamat"}
+                    title={isCustomerSession ? "Tambah alamat" : "Login untuk tambah alamat"}
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-white text-blue-600 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                  >
+                    <Plus className="h-4 w-4" strokeWidth={2.2} />
+                  </Link>
+                </div>
               </div>
             ) : null}
 
@@ -226,7 +238,7 @@ export function AddressShortcut({
 
             <div className="mt-3 border-t border-slate-200 pt-3">
               <Link
-                href="/account/addresses"
+                href={manageAddressHref}
                 onClick={() => setOpen(false)}
                 className="text-xs font-semibold text-blue-600 transition hover:text-blue-700"
               >

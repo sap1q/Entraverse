@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { authApi } from "@/lib/api/auth";
-import { persistAuthToken } from "@/lib/axios";
 import { setStoredAdmin } from "@/lib/utils/storage";
 
 type LoginFormValues = {
@@ -30,7 +29,6 @@ export default function AdminLoginPage() {
     try {
       const response = await authApi.login({ ...values, remember: false });
       const data = response.data;
-      persistAuthToken(data.token, false, data.expires_in, data.refresh_token);
       setStoredAdmin(data.admin);
       router.push("/admin/dashboard");
     } catch (error) {

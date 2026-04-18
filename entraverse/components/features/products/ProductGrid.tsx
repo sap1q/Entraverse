@@ -89,11 +89,11 @@ export const ProductGrid = () => {
 
   return (
     <div className="space-y-5">
-      <p className="text-sm text-slate-600">
+      <div className="text-sm text-slate-600">
         Menampilkan <span className="font-semibold text-slate-900">{startItem}</span> -
         <span className="font-semibold text-slate-900"> {endItem}</span> dari{" "}
         <span className="font-semibold text-slate-900">{total}</span> produk
-      </p>
+      </div>
 
       <div
         className={cn(

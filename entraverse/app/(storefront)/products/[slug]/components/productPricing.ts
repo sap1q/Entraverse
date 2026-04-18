@@ -1,8 +1,14 @@
 "use client";
 
-import type { ProductDetail, ProductVariantPricingRow } from "@/types/product.types";
+import type { ProductDetail, ProductVariantGroup, ProductVariantPricingRow } from "@/types/product.types";
 
 const normalizeText = (value: string): string => value.trim().replace(/\s+/g, " ").toLowerCase();
+
+const findRowOptionValue = (row: ProductVariantPricingRow, groupName: string): string | null => {
+  const options = row.options ?? {};
+  const match = Object.entries(options).find(([name]) => normalizeText(name) === normalizeText(groupName));
+  return match ? String(match[1]) : null;
+};
 
 export const resolveVariantRowIdentity = (row: ProductVariantPricingRow): string | null => {
   const candidates = [row.sku, row.sku_seller, row.variant_code];
@@ -38,6 +44,34 @@ export const resolveVariantRowWeight = (row: ProductVariantPricingRow): number |
     : null;
 };
 
+export const isVariantRowPurchasable = (row: ProductVariantPricingRow): boolean => {
+  const price = resolveVariantRowPrice(row);
+  const stock =
+    typeof row.stock === "number" && Number.isFinite(row.stock)
+      ? Math.max(0, row.stock)
+      : null;
+
+  const hasPrice = typeof price === "number" && Number.isFinite(price) && price > 0;
+  const hasStock = stock === null ? true : stock > 0;
+
+  return hasPrice && hasStock;
+};
+
+const matchesScopedSelection = (
+  row: ProductVariantPricingRow,
+  selectedVariants: Record<string, string>
+): boolean => {
+  const selectionEntries = Object.entries(selectedVariants);
+  if (selectionEntries.length === 0) return false;
+
+  return selectionEntries.every(([groupName, selectedOption]) => {
+    const rowOptionValue = findRowOptionValue(row, groupName);
+    if (!rowOptionValue) return false;
+
+    return normalizeText(rowOptionValue) === normalizeText(selectedOption);
+  });
+};
+
 const matchesSelectedVariants = (
   row: ProductVariantPricingRow,
   selectedVariants: Record<string, string>
@@ -47,13 +81,115 @@ const matchesSelectedVariants = (
   if (optionEntries.length === 0) return false;
 
   return optionEntries.every(([name, value]) => {
-    const selectedEntry = Object.entries(selectedVariants).find(
-      ([selectedName]) => normalizeText(selectedName) === normalizeText(name)
-    );
+    const selectedEntry = Object.entries(selectedVariants).find(([selectedName]) => normalizeText(selectedName) === normalizeText(name));
 
     if (!selectedEntry) return false;
     return normalizeText(selectedEntry[1]) === normalizeText(value);
   });
+};
+
+const buildScopedSelection = (
+  variants: ProductVariantGroup[],
+  selectedVariants: Record<string, string>,
+  groupName: string,
+  option: string
+): Record<string, string> => {
+  const scopedSelection: Record<string, string> = {};
+
+  for (const group of variants) {
+    if (normalizeText(group.name) === normalizeText(groupName)) {
+      scopedSelection[group.name] = option;
+      break;
+    }
+
+    const selectedValue = selectedVariants[group.name];
+    if (typeof selectedValue === "string" && selectedValue.trim().length > 0) {
+      scopedSelection[group.name] = selectedValue;
+    }
+  }
+
+  return scopedSelection;
+};
+
+export const isVariantOptionAvailable = ({
+  variants,
+  variantRows,
+  selectedVariants,
+  groupName,
+  option,
+}: {
+  variants: ProductVariantGroup[];
+  variantRows: ProductVariantPricingRow[];
+  selectedVariants: Record<string, string>;
+  groupName: string;
+  option: string;
+}): boolean => {
+  if (variantRows.length === 0) {
+    return true;
+  }
+
+  const scopedSelection = buildScopedSelection(variants, selectedVariants, groupName, option);
+  return variantRows.some((row) => isVariantRowPurchasable(row) && matchesScopedSelection(row, scopedSelection));
+};
+
+export const normalizeVariantSelection = ({
+  variants,
+  selectedVariants,
+  variantRows,
+}: {
+  variants: ProductVariantGroup[];
+  selectedVariants: Record<string, string>;
+  variantRows: ProductVariantPricingRow[];
+}): Record<string, string> => {
+  if (variants.length === 0) {
+    return {};
+  }
+
+  if (variantRows.length === 0) {
+    return variants.reduce<Record<string, string>>((result, group) => {
+      if (group.options.length === 0) return result;
+
+      const selectedValue = selectedVariants[group.name];
+      result[group.name] = group.options.includes(selectedValue) ? selectedValue : group.options[0];
+      return result;
+    }, {});
+  }
+
+  return variants.reduce<Record<string, string>>((result, group) => {
+    if (group.options.length === 0) {
+      return result;
+    }
+
+    const selectedValue = selectedVariants[group.name];
+    const requestedOption = group.options.includes(selectedValue) ? selectedValue : null;
+
+    if (
+      requestedOption &&
+      isVariantOptionAvailable({
+        variants,
+        variantRows,
+        selectedVariants: result,
+        groupName: group.name,
+        option: requestedOption,
+      })
+    ) {
+      result[group.name] = requestedOption;
+      return result;
+    }
+
+    const firstAvailableOption = group.options.find((option) =>
+      isVariantOptionAvailable({
+        variants,
+        variantRows,
+        selectedVariants: result,
+        groupName: group.name,
+        option,
+      })
+    );
+
+    result[group.name] = firstAvailableOption ?? group.options[0];
+    return result;
+  }, {});
 };
 
 export const resolveSelectedVariantRow = (
@@ -83,9 +219,11 @@ export const resolveSelectedProductPrice = (
   variantSku?: string | null
 ): number => {
   const exactMatch = resolveSelectedVariantRow(product, selectedVariants, variantSku);
-  if (!exactMatch) return product.price;
+  if (!exactMatch) {
+    return Array.isArray(product.variant_pricing) && product.variant_pricing.length > 0 ? 0 : product.price;
+  }
 
-  return resolveVariantRowPrice(exactMatch) ?? product.price;
+  return resolveVariantRowPrice(exactMatch) ?? 0;
 };
 
 export const resolveSelectedProductOfflinePrice = (
@@ -95,7 +233,11 @@ export const resolveSelectedProductOfflinePrice = (
 ): number => {
   const exactMatch = resolveSelectedVariantRow(product, selectedVariants, variantSku);
   if (exactMatch) {
-    return resolveVariantRowOfflinePrice(exactMatch) ?? product.offline_price ?? product.price;
+    return resolveVariantRowOfflinePrice(exactMatch) ?? 0;
+  }
+
+  if (Array.isArray(product.variant_pricing) && product.variant_pricing.length > 0) {
+    return 0;
   }
 
   const firstVariantWithPrice = (product.variant_pricing ?? []).find(

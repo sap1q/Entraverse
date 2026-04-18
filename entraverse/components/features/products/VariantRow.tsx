@@ -25,6 +25,15 @@ const parseRupiahInput = (value: string): number => {
   if (digits === "") return 0;
   return Number(digits) || 0;
 };
+const resolvePurchaseCurrencySymbol = (currency: string): string => {
+  const normalized = String(currency).toUpperCase();
+
+  if (normalized === "IDR") return "Rp";
+  if (normalized === "CNY") return "¥";
+  if (normalized === "EUR") return "EUR";
+  if (normalized === "AUD") return "A$";
+  return "$";
+};
 
 const RupiahInput = ({
   value,
@@ -83,6 +92,7 @@ export default function VariantRow({
   onSelect,
   isExchangeValueEditable = true,
 }: VariantRowProps) {
+  const purchaseCurrencySymbol = resolvePurchaseCurrencySymbol(row.currency);
   const stockoutDateA = toDateInputValue(row.stockoutDateA);
   const stockoutDateB = toDateInputValue(row.stockoutDateB);
   const startDate = toDateInputValue(row.startDate);
@@ -104,13 +114,18 @@ export default function VariantRow({
         {combo.label}
       </td>
       <td className="min-w-[140px] px-2 py-2">
-        <input
-          type="number"
-          min={0}
-          className={inputBase}
-          value={row.purchasePrice}
-          onChange={(e) => onUpdateField(combo.key, "purchasePrice", Number(e.target.value))}
-        />
+        <div className="relative">
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-500">
+            {purchaseCurrencySymbol}
+          </span>
+          <input
+            type="number"
+            min={0}
+            className={`${inputBase} pl-10 text-right tabular-nums`}
+            value={row.purchasePrice}
+            onChange={(e) => onUpdateField(combo.key, "purchasePrice", Number(e.target.value))}
+          />
+        </div>
       </td>
       <td className="min-w-[120px] px-2 py-2">
         <select className={inputBase} value={row.currency} onChange={(e) => onUpdateField(combo.key, "currency", e.target.value)}>

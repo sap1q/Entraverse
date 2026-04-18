@@ -3,8 +3,9 @@
 import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { ReadonlyURLSearchParams } from "next/navigation";
-import type { ProductVariantGroup } from "@/types/product.types";
+import type { ProductVariantGroup, ProductVariantPricingRow } from "@/types/product.types";
 import { slugifyValue } from "@/lib/utils/formatter";
+import { normalizeVariantSelection } from "@/app/(storefront)/products/[slug]/components/productPricing";
 
 const getVariantParamKey = (groupName: string, index: number): string => {
   if (index === 0) return "variant";
@@ -20,7 +21,8 @@ const findOptionByToken = (options: string[], token: string | null): string | nu
 
 const buildSelectedVariants = (
   variants: ProductVariantGroup[],
-  searchParams: URLSearchParams | ReadonlyURLSearchParams | null
+  searchParams: URLSearchParams | ReadonlyURLSearchParams | null,
+  variantPricing: ProductVariantPricingRow[]
 ): Record<string, string> => {
   const result: Record<string, string> = {};
 
@@ -35,17 +37,24 @@ const buildSelectedVariants = (
     result[group.name] = matched ?? group.options[0];
   });
 
-  return result;
+  return normalizeVariantSelection({
+    variants,
+    selectedVariants: result,
+    variantRows: variantPricing,
+  });
 };
 
-export const useVariantSelection = (variants: ProductVariantGroup[]) => {
+export const useVariantSelection = (
+  variants: ProductVariantGroup[],
+  variantPricing: ProductVariantPricingRow[] = []
+) => {
   const searchParams = useSearchParams();
   const [selectedVariantsState, setSelectedVariants] = useState<Record<string, string>>(() =>
-    buildSelectedVariants(variants, searchParams)
+    buildSelectedVariants(variants, searchParams, variantPricing)
   );
 
   const selectedVariants = useMemo(() => {
-    const initial = buildSelectedVariants(variants, searchParams);
+    const initial = buildSelectedVariants(variants, searchParams, variantPricing);
     const merged = { ...initial };
 
     Object.entries(selectedVariantsState).forEach(([name, value]) => {
@@ -55,17 +64,27 @@ export const useVariantSelection = (variants: ProductVariantGroup[]) => {
       merged[name] = value;
     });
 
-    return merged;
-  }, [searchParams, selectedVariantsState, variants]);
+    return normalizeVariantSelection({
+      variants,
+      selectedVariants: merged,
+      variantRows: variantPricing,
+    });
+  }, [searchParams, selectedVariantsState, variantPricing, variants]);
 
   const updateVariant = useCallback(
     (groupName: string, value: string) => {
-      setSelectedVariants((current) => ({
-        ...current,
-        [groupName]: value,
-      }));
+      setSelectedVariants((current) =>
+        normalizeVariantSelection({
+          variants,
+          selectedVariants: {
+            ...current,
+            [groupName]: value,
+          },
+          variantRows: variantPricing,
+        })
+      );
     },
-    []
+    [variantPricing, variants]
   );
 
   return {

@@ -335,6 +335,8 @@ const getBestSellingProducts = async (limit = 6): Promise<ApiListResult<Storefro
 const getNewestProducts = async (limit = 24): Promise<ApiListResult<StorefrontProduct>> => {
   try {
     const payload = await request("/v1/products", {
+      sort_by: "newest",
+      sort_order: "desc",
       per_page: limit,
       limit,
     }, { noStore: true });

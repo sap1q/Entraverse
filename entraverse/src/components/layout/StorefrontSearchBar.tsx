@@ -14,6 +14,7 @@ import type { Product } from "@/types/product.types";
 interface StorefrontSearchBarProps {
   compact?: boolean;
   variant?: "default" | "overlay";
+  showAddressShortcut?: boolean;
 }
 
 const SEARCH_HISTORY_KEY = "entraverse:storefront-search-history";
@@ -59,6 +60,7 @@ const writeHistory = (value: string): string[] => {
 export function StorefrontSearchBar({
   compact = false,
   variant = "default",
+  showAddressShortcut = true,
 }: StorefrontSearchBarProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -167,16 +169,21 @@ export function StorefrontSearchBar({
       <form
         onSubmit={handleSubmit}
         className={cn(
-          "flex items-center gap-2 rounded-full px-3 transition-[background-color,border-color,color,box-shadow] duration-300",
+          "flex items-center gap-2 rounded-full transition-[background-color,border-color,color,box-shadow] duration-300",
           isOverlay
             ? "border border-white/15 bg-white/[0.08] text-white shadow-[0_18px_45px_rgba(15,23,42,0.14)] backdrop-blur-xl focus-within:border-white/35 focus-within:bg-white/[0.14]"
             : "border border-slate-200/80 bg-white text-slate-600 focus-within:border-blue-300",
-          compact ? "h-10" : "h-11"
+          compact ? "h-10 px-3" : "h-11 px-3",
+          !showAddressShortcut && compact && "px-2.5"
         )}
         role="search"
       >
-        <AddressShortcut mode="pill" compact={compact} variant={variant} />
-        <span className={cn("w-px", isOverlay ? "bg-white/15" : "bg-slate-200", compact ? "h-4" : "h-5")} aria-hidden />
+        {showAddressShortcut ? (
+          <>
+            <AddressShortcut mode="pill" compact={compact} variant={variant} />
+            <span className={cn("w-px", isOverlay ? "bg-white/15" : "bg-slate-200", compact ? "h-4" : "h-5")} aria-hidden />
+          </>
+        ) : null}
         <Search
           className={cn("h-4 w-4 shrink-0 transition-colors duration-300", isOverlay ? "text-white/80" : "text-slate-500")}
           strokeWidth={1.6}

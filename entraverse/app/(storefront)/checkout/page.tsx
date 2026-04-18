@@ -30,7 +30,12 @@ import {
   savePendingPaymentSession,
   type PendingPaymentSession,
 } from "@/lib/payments/midtrans-session";
+import {
+  clearPendingTradeInCheckoutDraft,
+  loadPendingTradeInCheckoutDraft,
+} from "@/lib/trade-in-checkout-draft";
 import { formatCurrencyIDR } from "@/lib/utils/formatter";
+import type { CartItem } from "@/types/cart.types";
 import {
   resolveSelectedVariantRow,
   resolveVariantRowPrice,
@@ -136,11 +141,28 @@ export default function CheckoutPage() {
   const [pendingPayment, setPendingPayment] = useState<PendingPaymentSession | null>(null);
   const [pendingPaymentHydrated, setPendingPaymentHydrated] = useState(false);
   const [pendingPaymentLoading, setPendingPaymentLoading] = useState(false);
+  const [pendingTradeInDraft, setPendingTradeInDraft] = useState<CartItem | null>(null);
   const [snapModalActive, setSnapModalActive] = useState(false);
   const submitGuardRef = useRef(false);
   const autoResumeAttemptedRef = useRef(false);
 
-  const selectedCartItems = useMemo(() => items.filter((item) => item.selected), [items]);
+  const selectedCartItems = useMemo(() => {
+    const selectedItems = items.filter((item) => item.selected);
+
+    if (!pendingTradeInDraft?.tradeInTransactionId) {
+      return selectedItems;
+    }
+
+    const alreadyTracked = items.some(
+      (item) => item.tradeInTransactionId === pendingTradeInDraft.tradeInTransactionId
+    );
+
+    if (alreadyTracked) {
+      return selectedItems;
+    }
+
+    return [pendingTradeInDraft, ...selectedItems];
+  }, [items, pendingTradeInDraft]);
   const selectedProductIds = useMemo(
     () => Array.from(new Set(selectedCartItems.map((item) => item.productId))),
     [selectedCartItems]
@@ -291,6 +313,14 @@ export default function CheckoutPage() {
     () => checkoutItems.filter((item) => item.kind === "purchase"),
     [checkoutItems]
   );
+  const zeroPriceCheckoutItems = useMemo(
+    () => purchaseCheckoutItems.filter((item) => item.unitPrice <= 0),
+    [purchaseCheckoutItems]
+  );
+  const checkoutBlockedByZeroPrice = zeroPriceCheckoutItems.length > 0;
+  const checkoutBlockedByZeroPriceMessage = checkoutBlockedByZeroPrice
+    ? "Ada produk dengan harga jual 0 di checkout. Hapus produk tersebut dari keranjang atau perbarui harganya terlebih dahulu."
+    : null;
   const tradeInCheckoutItems = useMemo(
     () => checkoutItems.filter((item) => item.kind === "trade_in"),
     [checkoutItems]
@@ -327,7 +357,25 @@ export default function CheckoutPage() {
   useEffect(() => {
     setPendingPayment(readPendingPaymentSession());
     setPendingPaymentHydrated(true);
+    setPendingTradeInDraft(loadPendingTradeInCheckoutDraft());
   }, []);
+
+  useEffect(() => {
+    if (!pendingTradeInDraft?.tradeInTransactionId) {
+      return;
+    }
+
+    const alreadyTracked = items.some(
+      (item) => item.tradeInTransactionId === pendingTradeInDraft.tradeInTransactionId
+    );
+
+    if (!alreadyTracked) {
+      return;
+    }
+
+    clearPendingTradeInCheckoutDraft();
+    setPendingTradeInDraft(null);
+  }, [items, pendingTradeInDraft]);
 
   useEffect(() => {
     if (isChecking || !isAuthenticated) {
@@ -581,6 +629,11 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (checkoutBlockedByZeroPrice) {
+      setCheckoutError("Ada produk dengan harga jual 0. Checkout tidak bisa dilanjutkan.");
+      return;
+    }
+
     submitGuardRef.current = true;
     setSubmitLoading(true);
     setCheckoutError(null);
@@ -607,6 +660,8 @@ export default function CheckoutPage() {
 
       consumeItems(selectedCartItems.map((item) => item.id));
       clearPendingPayment();
+      clearPendingTradeInCheckoutDraft();
+      setPendingTradeInDraft(null);
 
       if (!result.requiresPayment) {
         const highlightedTradeIn = result.entryKind === "trade_in" ? (result.tradeInTransactions[0] ?? null) : null;
@@ -964,6 +1019,11 @@ export default function CheckoutPage() {
 
               {containsPurchaseItem ? (
                 <>
+              {checkoutBlockedByZeroPriceMessage ? (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                  {checkoutBlockedByZeroPriceMessage}
+                </div>
+              ) : null}
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 <label className="block">
                   <p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Kurir</p>
@@ -1096,6 +1156,7 @@ export default function CheckoutPage() {
               disabled={
                 submitLoading ||
                 pendingPaymentLoading ||
+                checkoutBlockedByZeroPrice ||
                 (containsPurchaseItem && shippingLoading) ||
                 cartLoading ||
                 (containsPurchaseItem && addressLoading) ||
@@ -1123,6 +1184,9 @@ export default function CheckoutPage() {
               <p className="mt-3 text-xs text-amber-700">
                 Tombol checkout dinonaktifkan sementara karena order {pendingPayment.orderNumber} masih menunggu pembayaran.
               </p>
+            ) : null}
+            {checkoutBlockedByZeroPriceMessage ? (
+              <p className="mt-3 text-xs text-amber-700">{checkoutBlockedByZeroPriceMessage}</p>
             ) : null}
           </aside>
         </div>

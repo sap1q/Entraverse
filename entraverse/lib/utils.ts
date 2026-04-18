@@ -6,6 +6,7 @@ import type {
   VariantCombination,
   VariantDefinition,
 } from "@/types/product";
+import { createClientId } from "@/lib/client-id";
 
 export function cn(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(" ");
@@ -96,7 +97,7 @@ export const createInitialProductForm = (): ProductFormState => ({
   photos: Array.from({ length: MAX_PHOTOS }, () => ({ file: null, preview: "" })),
   variants: [
     {
-      id: crypto.randomUUID(),
+      id: createClientId("variant"),
       name: "Garansi",
       options: ["Tanpa Garansi", "Toko - 1 Tahun"],
       draftOption: "",

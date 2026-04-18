@@ -11,20 +11,23 @@ interface ProductBreadcrumbProps {
 
 export const ProductBreadcrumb = ({ category, productName }: ProductBreadcrumbProps) => {
   return (
-    <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-500" aria-label="Breadcrumb">
-      <Link href="/" className="transition-colors hover:text-blue-600">
+    <nav className="flex min-w-0 flex-wrap items-center gap-2 overflow-hidden text-sm text-slate-500" aria-label="Breadcrumb">
+      <Link href="/" className="shrink-0 transition-colors hover:text-blue-600">
         Beranda
       </Link>
-      <ChevronRight className="h-4 w-4" />
-      <Link href="/products" className="transition-colors hover:text-blue-600">
+      <ChevronRight className="h-4 w-4 shrink-0" />
+      <Link href="/products" className="shrink-0 transition-colors hover:text-blue-600">
         Produk
       </Link>
-      <ChevronRight className="h-4 w-4" />
-      <Link href={`/products?category=${encodeURIComponent(category.slug)}`} className="transition-colors hover:text-blue-600">
+      <ChevronRight className="h-4 w-4 shrink-0" />
+      <Link
+        href={`/products?category=${encodeURIComponent(category.slug)}`}
+        className="max-w-full truncate transition-colors hover:text-blue-600"
+      >
         {category.name}
       </Link>
-      <ChevronRight className="h-4 w-4" />
-      <span className="font-medium text-slate-900">{productName}</span>
+      <ChevronRight className="h-4 w-4 shrink-0" />
+      <span className="min-w-0 max-w-full truncate font-medium text-slate-900">{productName}</span>
     </nav>
   );
 };

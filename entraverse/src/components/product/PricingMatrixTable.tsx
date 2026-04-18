@@ -67,6 +67,16 @@ const defaultMatrixRow: MatrixPricing = {
   procurementStatus: "Normal",
 };
 
+const resolvePurchaseCurrencySymbol = (currency: string): string => {
+  const normalized = String(currency).toUpperCase();
+
+  if (normalized === "IDR") return "Rp";
+  if (normalized === "CNY") return "¥";
+  if (normalized === "EUR") return "EUR";
+  if (normalized === "AUD") return "A$";
+  return "$";
+};
+
 function PricingMatrixTable({
   combinations,
   matrixData,
@@ -300,15 +310,20 @@ function PricingMatrixTable({
                     {combo.label}
                   </td>
                   <td className="px-3 py-2 align-middle">
-                    <input
-                      type="number"
-                      className={matrixInputNumberBase}
-                      value={row.purchasePrice}
-                      placeholder="0"
-                      onChange={(event) =>
-                        updateMatrixField(combo.key, "purchasePrice", Number(event.target.value))
-                      }
-                    />
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-500">
+                        {resolvePurchaseCurrencySymbol(row.currency)}
+                      </span>
+                      <input
+                        type="number"
+                        className={`${matrixInputNumberBase} pl-10`}
+                        value={row.purchasePrice}
+                        placeholder="0"
+                        onChange={(event) =>
+                          updateMatrixField(combo.key, "purchasePrice", Number(event.target.value))
+                        }
+                      />
+                    </div>
                   </td>
                   <td className="px-3 py-2 align-middle">
                     <select
@@ -672,4 +687,3 @@ function PricingMatrixTable({
 }
 
 export default memo(PricingMatrixTable);
-

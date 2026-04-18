@@ -33,6 +33,7 @@ it('transforms product to jurnal format correctly', function (): void {
         ->create([
             'name' => 'Test Product',
             'spu' => 'TEST-001',
+            'barcode' => '8991234567890',
             'brand' => 'Test Brand',
             'category' => 'Legacy Category',
             'product_status' => 'active',
@@ -55,6 +56,7 @@ it('transforms product to jurnal format correctly', function (): void {
     expect($result['track_inventory'])->toBeTrue();
     expect($result['archive'])->toBeFalse();
     expect($result['weight'])->toBe(500.0);
+    expect($result['barcode'])->toBe('8991234567890');
     expect($result)->toHaveKey('sell_price_per_unit');
     expect($result)->toHaveKey('buy_price_per_unit');
 });
@@ -224,6 +226,236 @@ it('imports product image using fallback image fields from jurnal payload', func
     expect(data_get($product?->photos, '0.is_primary'))->toBeTrue();
 });
 
+it('imports barcode from jurnal product list payload', function (): void {
+    $this->mekariMock
+        ->shouldReceive('request')
+        ->once()
+        ->with('GET', '/public/jurnal/api/v1/products', [
+            'query' => [
+                'page' => 1,
+                'per_page' => 1,
+            ],
+        ])
+        ->andReturn([
+            'products' => [
+                [
+                    'id' => 'jrnl-barcode-list-1',
+                    'name' => 'Imported Product With Barcode',
+                    'product_code' => 'BARCODE-001',
+                    'barcode' => '8990001112223',
+                    'quantity_available' => 5,
+                    'sell_price_per_unit' => 125000,
+                    'buy_price_per_unit' => 85000,
+                ],
+            ],
+            'total_pages' => 1,
+        ]);
+
+    $result = $this->service->importProductsFromJurnal([
+        'page' => 1,
+        'per_page' => 1,
+    ], 1);
+
+    expect($result['created'])->toBe(1);
+    expect($result['failed_count'])->toBe(0);
+
+    $product = Product::query()->where('jurnal_id', 'jrnl-barcode-list-1')->first();
+    expect($product)->not()->toBeNull();
+    expect($product?->barcode)->toBe('8990001112223');
+});
+
+it('imports available qty and unit buy price aliases into stock and purchase price fields', function (): void {
+    $this->mekariMock
+        ->shouldReceive('request')
+        ->once()
+        ->with('GET', '/public/jurnal/api/v1/products', [
+            'query' => [
+                'page' => 1,
+                'per_page' => 1,
+            ],
+        ])
+        ->andReturn([
+            'products' => [
+                [
+                    'id' => 'jrnl-alias-1',
+                    'name' => 'Imported Alias Product',
+                    'product_code' => 'ALIAS-001',
+                    'available_qty' => 12,
+                    'sell_price_per_unit' => 225000,
+                    'unit_buy_price' => 175000,
+                ],
+            ],
+            'total_pages' => 1,
+        ]);
+
+    $result = $this->service->importProductsFromJurnal([
+        'page' => 1,
+        'per_page' => 1,
+    ], 1);
+
+    expect($result['created'])->toBe(1);
+    expect($result['failed_count'])->toBe(0);
+
+    $product = Product::query()->where('jurnal_id', 'jrnl-alias-1')->first();
+    expect($product)->not()->toBeNull();
+    expect($product?->stock)->toBe(12);
+    expect(data_get($product?->inventory, 'total_stock'))->toBe(12);
+    expect((float) data_get($product?->inventory, 'cost'))->toBe(175000.0);
+    expect(data_get($product?->variant_pricing, '0.stock'))->toBe(12);
+    expect((float) data_get($product?->variant_pricing, '0.purchase_price'))->toBe(175000.0);
+    expect((float) data_get($product?->variant_pricing, '0.purchase_price_idr'))->toBe(175000.0);
+});
+
+it('fetches jurnal product detail when product list payload does not include barcode', function (): void {
+    $this->mekariMock
+        ->shouldReceive('request')
+        ->once()
+        ->with('GET', '/public/jurnal/api/v1/products', [
+            'query' => [
+                'page' => 1,
+                'per_page' => 1,
+            ],
+        ])
+        ->andReturn([
+            'products' => [
+                [
+                    'id' => 'jrnl-barcode-detail-1',
+                    'name' => 'Imported Product Missing Barcode',
+                    'product_code' => 'BARCODE-DETAIL-001',
+                    'quantity_available' => 3,
+                    'sell_price_per_unit' => 210000,
+                    'buy_price_per_unit' => 150000,
+                    'images' => [
+                        [
+                            'url' => '/images/products/barcode-detail-001.jpg',
+                        ],
+                    ],
+                ],
+            ],
+            'total_pages' => 1,
+        ]);
+
+    $this->mekariMock
+        ->shouldReceive('request')
+        ->once()
+        ->with('GET', '/public/jurnal/api/v1/products/jrnl-barcode-detail-1')
+        ->andReturn([
+            'product' => [
+                'barcode' => '8999990001112',
+            ],
+        ]);
+
+    $result = $this->service->importProductsFromJurnal([
+        'page' => 1,
+        'per_page' => 1,
+    ], 1);
+
+    expect($result['created'])->toBe(1);
+    expect($result['failed_count'])->toBe(0);
+
+    $product = Product::query()->where('jurnal_id', 'jrnl-barcode-detail-1')->first();
+    expect($product)->not()->toBeNull();
+    expect($product?->barcode)->toBe('8999990001112');
+    expect(data_get($product?->photos, '0.url'))->toBe('https://api.mekari.com/images/products/barcode-detail-001.jpg');
+});
+
+it('falls back to existing jurnal metadata barcode when remote barcode is empty', function (): void {
+    $product = Product::factory()->create([
+        'jurnal_id' => 'jrnl-barcode-fallback-1',
+        'name' => 'Barcode Fallback Product',
+        'barcode' => null,
+        'jurnal_metadata' => [
+            'product' => [
+                'barcode' => '8991112223334',
+            ],
+        ],
+    ]);
+
+    $this->mekariMock
+        ->shouldReceive('request')
+        ->once()
+        ->with('GET', '/public/jurnal/api/v1/products', [
+            'query' => [
+                'page' => 1,
+                'per_page' => 1,
+            ],
+        ])
+        ->andReturn([
+            'products' => [
+                [
+                    'id' => 'jrnl-barcode-fallback-1',
+                    'name' => 'Barcode Fallback Product',
+                    'product_code' => 'BARCODE-FALLBACK-001',
+                    'barcode' => '',
+                    'quantity_available' => 3,
+                    'sell_price_per_unit' => 100000,
+                    'buy_price_per_unit' => 70000,
+                ],
+            ],
+            'total_pages' => 1,
+        ]);
+
+    $result = $this->service->importProductsFromJurnal([
+        'page' => 1,
+        'per_page' => 1,
+    ], 1);
+
+    expect($result['updated'])->toBe(1);
+    expect($result['failed_count'])->toBe(0);
+    expect($product->fresh()->barcode)->toBe('8991112223334');
+});
+
+it('fetches jurnal product detail when product list payload does not include image', function (): void {
+    $this->mekariMock
+        ->shouldReceive('request')
+        ->once()
+        ->with('GET', '/public/jurnal/api/v1/products', [
+            'query' => [
+                'page' => 1,
+                'per_page' => 1,
+            ],
+        ])
+        ->andReturn([
+            'products' => [
+                [
+                    'id' => 'jrnl-img-detail-1',
+                    'name' => 'Imported Product With Detail Image',
+                    'product_code' => 'IMG-DETAIL-001',
+                    'quantity_available' => 4,
+                    'sell_price_per_unit' => 450000,
+                    'buy_price_per_unit' => 300000,
+                ],
+            ],
+            'total_pages' => 1,
+        ]);
+
+    $this->mekariMock
+        ->shouldReceive('request')
+        ->once()
+        ->with('GET', '/public/jurnal/api/v1/products/jrnl-img-detail-1')
+        ->andReturn([
+            'product' => [
+                'images' => [
+                    [
+                        'url' => '/images/products/img-detail-001.jpg',
+                    ],
+                ],
+            ],
+        ]);
+
+    $result = $this->service->importProductsFromJurnal([
+        'page' => 1,
+        'per_page' => 1,
+    ], 1);
+
+    expect($result['created'])->toBe(1);
+    expect($result['failed_count'])->toBe(0);
+
+    $product = Product::query()->where('jurnal_id', 'jrnl-img-detail-1')->first();
+    expect($product)->not()->toBeNull();
+    expect(data_get($product?->photos, '0.url'))->toBe('https://api.mekari.com/images/products/img-detail-001.jpg');
+});
+
 it('preserves admin marketplace state when pulling product from jurnal', function (): void {
     $product = Product::factory()->create([
         'jurnal_id' => 'jrnl-locked-1',
@@ -292,13 +524,159 @@ it('preserves admin marketplace state when pulling product from jurnal', functio
     $fresh = $product->fresh();
 
     expect(data_get($fresh?->inventory, 'price'))->toBe(999000);
-    expect(data_get($fresh?->inventory, 'total_stock'))->toBe(8);
+    expect(data_get($fresh?->inventory, 'total_stock'))->toBe(30);
     expect((float) data_get($fresh?->inventory, 'jurnal_price'))->toBe(250000.0);
     expect(data_get($fresh?->inventory, 'jurnal_total_stock'))->toBe(30);
+    expect(data_get($fresh?->variant_pricing, '0.stock'))->toBe(30);
+    expect(data_get($fresh?->variant_pricing, '0.warehouse_stock.Gudang Utama'))->toBe(30);
     expect(data_get($fresh?->variant_pricing, '0.entraverse_price'))->toBe(1049000);
     expect(data_get($fresh?->variant_pricing, '0.tiktok_price'))->toBe(1099000);
     expect(data_get($fresh?->variant_pricing, '0.sku_seller'))->toBe('SELLER-LOCK-001');
     expect(data_get($fresh?->jurnal_metadata, 'last_pull_snapshot.preserved_local_marketplace_state'))->toBeTrue();
+});
+
+it('updates shared warranty variants with jurnal stock when local marketplace state is preserved', function (): void {
+    $product = Product::factory()->create([
+        'jurnal_id' => 'jrnl-warranty-1',
+        'name' => 'Warranty Shared Stock Product',
+        'spu' => 'EASFC25C-NS',
+        'stock' => 0,
+        'inventory' => [
+            'price' => 563723,
+            'cost' => 400000,
+            'total_stock' => 0,
+            'weight' => 200,
+            'warehouse' => 'Gudang Utama',
+        ],
+        'variant_pricing' => [
+            [
+                'sku' => 'EASFC25C-NS-Garansi-Tanpa Garansi',
+                'label' => 'Garansi: Tanpa Garansi',
+                'stock' => 0,
+                'warehouse' => 'Gudang Utama',
+                'warehouse_stock' => ['Gudang Utama' => 0],
+                'options' => ['Garansi' => 'Tanpa Garansi'],
+                'entraverse_price' => 600000,
+            ],
+            [
+                'sku' => 'EASFC25C-NS-Garansi-Toko - 1 Tahun',
+                'label' => 'Garansi: Toko - 1 Tahun',
+                'stock' => 0,
+                'warehouse' => 'Gudang Utama',
+                'warehouse_stock' => ['Gudang Utama' => 0],
+                'options' => ['Garansi' => 'Toko - 1 Tahun'],
+                'entraverse_price' => 650000,
+            ],
+        ],
+        'jurnal_metadata' => [
+            'local_marketplace_state' => [
+                'locked' => true,
+                'source' => 'admin_edit',
+            ],
+        ],
+    ]);
+
+    $this->mekariMock
+        ->shouldReceive('request')
+        ->once()
+        ->with('GET', '/public/jurnal/api/v1/products', [
+            'query' => [
+                'page' => 1,
+                'per_page' => 1,
+            ],
+        ])
+        ->andReturn([
+            'products' => [
+                [
+                    'id' => 'jrnl-warranty-1',
+                    'name' => 'Warranty Shared Stock Product',
+                    'product_code' => 'EASFC25C-NS',
+                    'quantity_available' => 2,
+                    'sell_price_per_unit' => 563723,
+                    'buy_price_per_unit' => 400000,
+                    'weight' => 200,
+                ],
+            ],
+            'total_pages' => 1,
+        ]);
+
+    $result = $this->service->importProductsFromJurnal([
+        'page' => 1,
+        'per_page' => 1,
+    ], 1);
+
+    expect($result['updated'])->toBe(1);
+
+    $fresh = $product->fresh();
+
+    expect(data_get($fresh?->inventory, 'total_stock'))->toBe(2);
+    expect(data_get($fresh?->variant_pricing, '0.stock'))->toBe(2);
+    expect(data_get($fresh?->variant_pricing, '0.warehouse_stock.Gudang Utama'))->toBe(2);
+    expect(data_get($fresh?->variant_pricing, '1.stock'))->toBe(2);
+    expect(data_get($fresh?->variant_pricing, '1.warehouse_stock.Gudang Utama'))->toBe(2);
+});
+
+it('preserves local product photos when pulling jurnal data after admin media edits', function (): void {
+    $product = Product::factory()->create([
+        'jurnal_id' => 'jrnl-photo-lock-1',
+        'name' => 'Locked Photo Product',
+        'spu' => 'PHOTO-001',
+        'photos' => [
+            [
+                'url' => '/storage/products/local-photo-001.jpg',
+                'alt' => 'Local Photo',
+                'is_primary' => true,
+            ],
+        ],
+        'jurnal_metadata' => [
+            'local_media_state' => [
+                'locked' => true,
+                'source' => 'admin_edit',
+            ],
+        ],
+    ]);
+
+    $this->mekariMock
+        ->shouldReceive('request')
+        ->once()
+        ->with('GET', '/public/jurnal/api/v1/products', [
+            'query' => [
+                'page' => 1,
+                'per_page' => 1,
+            ],
+        ])
+        ->andReturn([
+            'products' => [
+                [
+                    'id' => 'jrnl-photo-lock-1',
+                    'name' => 'Locked Photo Product',
+                    'product_code' => 'PHOTO-001',
+                    'quantity_available' => 7,
+                    'sell_price_per_unit' => 500000,
+                    'buy_price_per_unit' => 350000,
+                    'images' => [
+                        [
+                            'url' => '/images/products/remote-photo-001.jpg',
+                        ],
+                    ],
+                ],
+            ],
+            'total_pages' => 1,
+        ]);
+
+    $result = $this->service->importProductsFromJurnal([
+        'page' => 1,
+        'per_page' => 1,
+    ], 1);
+
+    expect($result['updated'])->toBe(1);
+
+    $fresh = $product->fresh();
+
+    expect(data_get($fresh?->photos, '0.url'))->toBe('/storage/products/local-photo-001.jpg');
+    expect(data_get($fresh?->photos, '0.alt'))->toBe('Local Photo');
+    expect(data_get($fresh?->photos, '1.url'))->toBe('https://api.mekari.com/images/products/remote-photo-001.jpg');
+    expect(data_get($fresh?->jurnal_metadata, 'last_pull_snapshot.preserved_local_photo_state'))->toBeTrue();
 });
 
 it('syncs by updating existing remote product found by custom id', function (): void {

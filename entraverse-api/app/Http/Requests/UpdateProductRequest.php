@@ -22,6 +22,7 @@ class UpdateProductRequest extends FormRequest
             'category_id' => ['sometimes', 'nullable', 'uuid', 'exists:categories,id'],
             'description' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'spu' => ['sometimes', 'nullable', 'string', 'max:50', new NoHtml],
+            'barcode' => ['sometimes', 'nullable', 'string', 'max:100', new NoHtml],
             'trade_in' => ['sometimes', 'nullable', 'boolean'],
             'status' => ['sometimes', 'nullable', 'in:active,inactive,draft'],
             'is_featured' => ['sometimes', 'nullable', 'boolean'],

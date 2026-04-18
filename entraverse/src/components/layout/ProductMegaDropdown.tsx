@@ -5,15 +5,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Flame, Sparkles } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { productsApi } from "@/lib/api/products";
-import type { Category, Product } from "@/types/product.types";
-
-type ProductBadge = "BARU" | "HOT";
-
-type HighlightProduct = {
-  product: Product;
-  badge: ProductBadge;
-};
+import type { Category } from "@/types/product.types";
+import {
+  buildCategoryHref,
+  loadProductMenuData,
+  SERVICE_LINKS,
+  warmProductMenuData,
+  type HighlightProduct,
+} from "@/src/components/layout/productMenuData";
 
 type ProductMegaDropdownProps = {
   open: boolean;
@@ -70,84 +69,9 @@ const productCardMotion = {
   },
 } as const;
 
-const SERVICE_LINKS = [
-  { label: "Trade-In", href: "/trade-in" },
-  { label: "Garansi", href: "/garansi" },
-] as const;
-
-const makeHighlights = (newest: Product[], hottest: Product[]): HighlightProduct[] => {
-  const fresh = newest.slice(0, 4).map((product) => ({ product, badge: "BARU" as const }));
-  const taken = new Set(fresh.map((item) => item.product.id));
-  const hot = hottest
-    .filter((product) => !taken.has(product.id))
-    .slice(0, 4)
-    .map((product) => ({ product, badge: "HOT" as const }));
-
-  return [...fresh, ...hot];
-};
-
-type MegaMenuData = {
-  categories: Category[];
-  highlights: HighlightProduct[];
-};
-
 type HighlightProductCardProps = {
   item: HighlightProduct;
   onClose: () => void;
-};
-
-let megaMenuDataCache: MegaMenuData | null = null;
-let megaMenuDataPromise: Promise<MegaMenuData> | null = null;
-
-const loadMegaMenuData = async (): Promise<MegaMenuData> => {
-  if (megaMenuDataCache) return megaMenuDataCache;
-  if (megaMenuDataPromise) return megaMenuDataPromise;
-
-  megaMenuDataPromise = (async () => {
-    const [newestResponse, hottestResponse, fetchedCategories] = await Promise.all([
-      productsApi.getProducts({ per_page: 8, sort_by: "newest" }),
-      productsApi.getProducts({ per_page: 8, sort_by: "popular" }),
-      productsApi
-        .getCategories({
-          limit: 8,
-          timeout: 12000,
-        })
-        .then((response) => response.data)
-        .catch((error) => {
-          console.warn("[mega-menu] kategori tidak berhasil dimuat, memakai fallback dari produk.", error);
-          return [] as Category[];
-        }),
-    ]);
-    const highlightedProducts = makeHighlights(newestResponse.data, hottestResponse.data);
-
-    const fallbackCategories = highlightedProducts
-      .map((item) => item.product.category)
-      .filter(
-        (category, index, all) =>
-          all.findIndex((candidate) => candidate.slug === category.slug) === index
-      )
-      .map((category) => ({
-        id: category.id,
-        slug: category.slug,
-        name: category.name,
-        product_count: 0,
-      }));
-
-    const categoriesForMenu = fetchedCategories.length > 0 ? fetchedCategories : fallbackCategories;
-    const resolvedData = {
-      categories: categoriesForMenu,
-      highlights: highlightedProducts,
-    } satisfies MegaMenuData;
-
-    megaMenuDataCache = resolvedData;
-    megaMenuDataPromise = null;
-    return resolvedData;
-  })().catch((error) => {
-    megaMenuDataPromise = null;
-    throw error;
-  });
-
-  return megaMenuDataPromise;
 };
 
 const HighlightProductCard = memo(function HighlightProductCard({
@@ -203,10 +127,8 @@ export function ProductMegaDropdown({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (megaMenuDataCache || megaMenuDataPromise) return;
-
     const warmupTimer = window.setTimeout(() => {
-      void loadMegaMenuData().catch(() => undefined);
+      warmProductMenuData();
     }, 180);
 
     return () => window.clearTimeout(warmupTimer);
@@ -218,24 +140,11 @@ export function ProductMegaDropdown({
     let mounted = true;
 
     const fetchMegaMenuData = async () => {
-      if (megaMenuDataCache) {
-        const cachedData = megaMenuDataCache;
-        setCategories(cachedData.categories);
-        setHighlights(cachedData.highlights);
-        setActiveCategorySlug((prev) => {
-          if (prev && cachedData.categories.some((category) => category.slug === prev)) return prev;
-          return cachedData.categories[0]?.slug ?? cachedData.highlights[0]?.product.category.slug ?? null;
-        });
-        setLoading(false);
-        setError(null);
-        return;
-      }
-
       setLoading(true);
       setError(null);
 
       try {
-        const { categories: categoriesForMenu, highlights: highlightedProducts } = await loadMegaMenuData();
+        const { categories: categoriesForMenu, highlights: highlightedProducts } = await loadProductMenuData();
         if (!mounted) return;
 
         setCategories(categoriesForMenu);
@@ -337,7 +246,7 @@ export function ProductMegaDropdown({
                           />
                         ) : null}
                         <Link
-                          href={`/products/${category.slug}`}
+                          href={buildCategoryHref(category.slug)}
                           onMouseEnter={() => handleCategoryActivate(category.slug)}
                           onFocus={() => handleCategoryActivate(category.slug)}
                           onClick={onClose}

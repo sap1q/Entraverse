@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { isAxiosError } from "@/lib/axios";
 import { userAddressApi } from "@/lib/api/user-address";
-import { hasStorefrontSession } from "@/src/lib/auth/access";
+import { hasStorefrontAccountSession } from "@/src/lib/auth/access";
 import type { UserAddress, UserAddressPayload } from "@/lib/api/types/user-address.types";
 
 type AddressSnapshot = {
@@ -106,7 +106,7 @@ export const useAddress = () => {
       const force = options?.force ?? false;
       const silent = options?.silent ?? false;
 
-      if (!hasStorefrontSession()) {
+      if (!hasStorefrontAccountSession()) {
         if (!silent) {
           setLoading(false);
         }
@@ -164,7 +164,7 @@ export const useAddress = () => {
   }, [fetchAddresses]);
 
   const setMainAddress = useCallback(async (addressId: string) => {
-    if (!hasStorefrontSession()) {
+    if (!hasStorefrontAccountSession()) {
       return { success: false as const, message: "Silakan login sebagai user untuk mengatur alamat." };
     }
 
@@ -194,7 +194,7 @@ export const useAddress = () => {
   }, []);
 
   const removeAddress = useCallback(async (addressId: string) => {
-    if (!hasStorefrontSession()) {
+    if (!hasStorefrontAccountSession()) {
       return { success: false as const, message: "Silakan login sebagai user untuk menghapus alamat." };
     }
 
@@ -225,7 +225,7 @@ export const useAddress = () => {
   }, []);
 
   const createAddress = useCallback(async (payload: UserAddressPayload) => {
-    if (!hasStorefrontSession()) {
+    if (!hasStorefrontAccountSession()) {
       const message = "Silakan login sebagai user untuk menambah alamat.";
       setError(message);
       return { success: false as const, message };
@@ -245,7 +245,7 @@ export const useAddress = () => {
   }, []);
 
   const updateAddress = useCallback(async (addressId: string, payload: UserAddressPayload) => {
-    if (!hasStorefrontSession()) {
+    if (!hasStorefrontAccountSession()) {
       const message = "Silakan login sebagai user untuk memperbarui alamat.";
       setError(message);
       return { success: false as const, message };

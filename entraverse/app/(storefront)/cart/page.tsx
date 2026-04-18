@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useCart } from "@/hooks/useCart";
-import { getToken } from "@/lib/utils/storage";
+import { hasStorefrontSession, buildStorefrontLoginRedirect } from "@/src/lib/auth/access";
 import { CartItemList } from "./components/CartItemList";
 import { CartSummary } from "./components/CartSummary";
 
@@ -27,6 +27,19 @@ export default function CartPage() {
   useEffect(() => {
     void refreshCart({ silent: true });
   }, [refreshCart]);
+
+  const zeroPriceItems = useMemo(
+    () =>
+      items.filter((item) => {
+        const isPurchaseItem = !item.tradeInEnabled && !item.tradeInTransactionId;
+        return item.selected && isPurchaseItem && item.price <= 0;
+      }),
+    [items]
+  );
+  const checkoutBlockedByZeroPrice = zeroPriceItems.length > 0;
+  const checkoutBlockedMessage = checkoutBlockedByZeroPrice
+    ? "Ada produk terpilih dengan harga jual 0. Produk tersebut tidak bisa dilanjutkan ke checkout."
+    : null;
 
   return (
     <div className="min-h-screen bg-[#f1f5f9]">
@@ -71,10 +84,15 @@ export default function CartPage() {
           <div className="lg:col-span-4">
             <CartSummary
               summary={summary}
-              disabled={summary.selectedLineCount === 0 || loading}
+              disabled={summary.selectedLineCount === 0 || loading || checkoutBlockedByZeroPrice}
+              disabledReason={checkoutBlockedMessage}
               onCheckout={() => {
-                if (!getToken()) {
-                  router.push("/auth/login?redirect=%2Fcheckout");
+                if (checkoutBlockedByZeroPrice) {
+                  return;
+                }
+
+                if (!hasStorefrontSession()) {
+                  router.push(buildStorefrontLoginRedirect("/checkout"));
                   return;
                 }
 

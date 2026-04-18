@@ -38,13 +38,15 @@ const getDiscountPercent = (baseValue: number, discountValue: number): number =>
 
 type CartShortcutProps = {
   variant?: "default" | "overlay";
+  size?: "default" | "compact";
 };
 
-export function CartShortcut({ variant = "default" }: CartShortcutProps) {
+export function CartShortcut({ variant = "default", size = "default" }: CartShortcutProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const { items, cartCount, refreshCart } = useCart();
 
   const [open, setOpen] = useState(false);
+  const isCompact = size === "compact";
 
   useEffect(() => {
     if (!open) return;
@@ -76,7 +78,8 @@ export function CartShortcut({ variant = "default" }: CartShortcutProps) {
       <button
         type="button"
         className={cn(
-          "relative rounded-full p-2 transition-[background-color,color,border-color,box-shadow] duration-300",
+          "relative inline-flex items-center justify-center rounded-full transition-[background-color,color,border-color,box-shadow] duration-300",
+          isCompact ? "h-10 w-10" : "h-11 w-11",
           variant === "overlay"
             ? "border border-white/12 bg-white/[0.08] text-white shadow-[0_12px_30px_rgba(15,23,42,0.12)] hover:bg-white/[0.14]"
             : "text-slate-700 hover:text-blue-600"
@@ -86,8 +89,13 @@ export function CartShortcut({ variant = "default" }: CartShortcutProps) {
         aria-haspopup="menu"
         onClick={() => setOpen((prev) => !prev)}
       >
-        <ShoppingCart className="h-5 w-5" strokeWidth={1.5} />
-        <span className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold text-white">
+        <ShoppingCart className={cn(isCompact ? "h-5 w-5" : "h-6 w-6")} strokeWidth={1.7} />
+        <span
+          className={cn(
+            "absolute inline-flex items-center justify-center rounded-full bg-blue-600 text-[10px] font-semibold text-white",
+            isCompact ? "-right-0.5 -top-0.5 h-4 min-w-4 px-1" : "-right-0.5 -top-0.5 h-4 min-w-4 px-1"
+          )}
+        >
           {cartCount}
         </span>
       </button>
@@ -99,7 +107,12 @@ export function CartShortcut({ variant = "default" }: CartShortcutProps) {
             animate="visible"
             exit="exit"
             variants={panelMotion}
-            className="absolute right-0 top-[calc(100%+10px)] z-[80] w-[min(92vw,340px)] origin-top-right rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_16px_52px_rgba(15,23,42,0.2)]"
+            className={cn(
+              "z-[80] rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_16px_52px_rgba(15,23,42,0.2)]",
+              isCompact
+                ? "fixed inset-x-3 top-[72px] w-auto max-h-[min(78vh,34rem)] origin-top"
+                : "absolute right-0 top-[calc(100%+10px)] w-[min(92vw,340px)] max-h-[min(80vh,36rem)] origin-top-right"
+            )}
             role="menu"
             aria-label="Keranjang"
           >
@@ -109,7 +122,12 @@ export function CartShortcut({ variant = "default" }: CartShortcutProps) {
             </div>
 
             {items.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
+              <div
+                className={cn(
+                  "rounded-xl border border-dashed border-slate-200 bg-slate-50 text-center",
+                  isCompact ? "px-4 py-7" : "px-4 py-6"
+                )}
+              >
                 <p className="text-sm font-medium text-slate-700">Keranjang masih kosong</p>
                 <p className="mt-1 text-xs text-slate-500">Yuk tambahkan produk favorit kamu.</p>
                 <Link
@@ -122,7 +140,7 @@ export function CartShortcut({ variant = "default" }: CartShortcutProps) {
               </div>
             ) : (
               <>
-                <ul className="max-h-[260px] space-y-2 overflow-auto pr-1">
+                <ul className={cn("space-y-2 overflow-auto pr-1", isCompact ? "max-h-[min(48vh,20rem)]" : "max-h-[260px]")}>
                   {items.map((item) => (
                     <li key={item.id} className="rounded-xl border border-slate-200 px-3 py-3">
                       <div className="flex items-start gap-3">
@@ -172,7 +190,7 @@ export function CartShortcut({ variant = "default" }: CartShortcutProps) {
                   ))}
                 </ul>
 
-                <div className="mt-3 grid grid-cols-2 gap-2">
+                <div className={cn("mt-3 grid gap-2", isCompact ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2")}>
                   <Link
                     href="/cart"
                     className="rounded-lg border border-slate-300 px-3 py-2 text-center text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100"
