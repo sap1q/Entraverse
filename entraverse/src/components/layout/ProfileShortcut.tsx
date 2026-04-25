@@ -125,6 +125,12 @@ export function ProfileShortcut({ variant = "default", size = "default" }: Profi
           avatarUrl: resolvedAvatar || getCachedProfileAvatar(),
         });
       } catch {
+        if (getSessionRole() === "customer") {
+          clearPersistedAuth();
+          setProfileDetails(null);
+          return;
+        }
+
         setProfileDetails((current) => ({
           subjectKey: currentSubjectKey,
           name: profileSnapshot.name ?? current?.name ?? null,
@@ -183,8 +189,8 @@ export function ProfileShortcut({ variant = "default", size = "default" }: Profi
     });
   };
 
-  const displayName = activeProfileDetails?.name ?? profileSnapshot.name ?? "Godzilla D. White";
-  const displayEmail = activeProfileDetails?.email ?? profileSnapshot.email ?? "user@example.com";
+  const displayName = activeProfileDetails?.name ?? profileSnapshot.name ?? "Pengguna";
+  const displayEmail = activeProfileDetails?.email ?? profileSnapshot.email ?? "";
 
   return (
     <ProfileDropdown

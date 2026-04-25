@@ -12,14 +12,14 @@ type RouteContext = {
 };
 
 const STOREFRONT_PATH_PATTERNS = [
-  /^\/user(?:\/|$)/,
-  /^\/logout(?:\/|$)/,
-  /^\/user-addresses(?:\/|$)/,
-  /^\/user\/addresses(?:\/|$)/,
-  /^\/shipping\/cost(?:\/|$)/,
-  /^\/checkout\/process(?:\/|$)/,
-  /^\/orders(?:\/|$)/,
-  /^\/trade-in\/transactions(?:\/|$)/,
+  /^\/(?:v1\/)?user(?:\/|$)/,
+  /^\/(?:v1\/)?logout(?:\/|$)/,
+  /^\/(?:v1\/)?user-addresses(?:\/|$)/,
+  /^\/(?:v1\/)?user\/addresses(?:\/|$)/,
+  /^\/(?:v1\/)?shipping\/cost(?:\/|$)/,
+  /^\/(?:v1\/)?checkout\/process(?:\/|$)/,
+  /^\/(?:v1\/)?orders(?:\/|$)/,
+  /^\/(?:v1\/)?trade-in\/transactions(?:\/|$)/,
 ] as const;
 
 const unauthorized = () =>

@@ -61,7 +61,7 @@ export default function StorefrontLoginForm() {
         name: profile.name,
       });
 
-      toast({ title: "Berhasil", description: "Login customer berhasil.", variant: "success" });
+      toast({ title: "Berhasil", description: "Login berhasil.", variant: "success" });
       router.push(resolvePostLoginRedirect());
       router.refresh();
     } catch (rawError) {
@@ -94,20 +94,7 @@ export default function StorefrontLoginForm() {
             />
           </div>
 
-          <h1 className="mb-8 text-center text-3xl font-semibold tracking-tight text-slate-900">
-            Masuk Customer
-          </h1>
-
-          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            <p className="font-semibold">Akun superadmin atau staff?</p>
-            <p className="mt-1">
-              Gunakan halaman{" "}
-              <Link href="/auth/login" className="font-semibold text-amber-950 underline underline-offset-2 hover:text-amber-700">
-                Login Admin
-              </Link>{" "}
-              untuk masuk ke dashboard.
-            </p>
-          </div>
+          <h1 className="mb-8 text-center text-3xl font-semibold tracking-tight text-slate-900">Masuk</h1>
 
           {error ? (
             <div className="mb-4 flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -178,7 +165,6 @@ export default function StorefrontLoginForm() {
             </Link>
           </p>
 
-          <p className="mt-3 text-center text-xs text-slate-500">Halaman ini khusus akun customer.</p>
         </section>
       </main>
 

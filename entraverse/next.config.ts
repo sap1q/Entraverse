@@ -53,6 +53,12 @@ const nextConfig: NextConfig = {
         pathname: "/**",
       },
       {
+        protocol: "http",
+        hostname: "192.168.1.22",
+        port: "8000",
+        pathname: "/**",
+      },
+      {
         protocol: "https",
         hostname: "*.jurnal.id",
         pathname: "/**",

@@ -570,7 +570,7 @@ export const customerOrdersApi = {
     filter?: CustomerOrderFilterKey;
   }): Promise<CustomerOrderListResult> {
     try {
-      const response = await api.get("/orders", { params });
+      const response = await api.get("/v1/orders", { params });
       const source = toObject(response.data);
       const rows = Array.isArray(source.data) ? source.data : [];
       const pagination = toObject(source.pagination);
@@ -604,7 +604,7 @@ export const customerOrdersApi = {
 
   async getPayment(orderId: string): Promise<CustomerOrderPaymentResult> {
     try {
-      const response = await api.get(`/orders/${orderId}/payment`);
+      const response = await api.get(`/v1/orders/${orderId}/payment`);
       const source = toObject(response.data);
       const data = toObject(source.data);
       const order = toObject(data.order);
@@ -631,7 +631,7 @@ export const customerOrdersApi = {
 
   async getOrder(orderId: string): Promise<CustomerOrder> {
     try {
-      const response = await api.get(`/orders/${orderId}`);
+      const response = await api.get(`/v1/orders/${orderId}`);
       const source = toObject(response.data);
       return mapOrder(source.data);
     } catch (error) {
@@ -642,14 +642,14 @@ export const customerOrdersApi = {
   async confirmReceived(orderId: string): Promise<CustomerOrder> {
     try {
       await ensureCsrfCookie();
-      const response = await api.post(`/orders/${orderId}/received`, {});
+      const response = await api.post(`/v1/orders/${orderId}/received`, {});
       const source = toObject(response.data);
       return mapOrder(source.data);
     } catch (error) {
       if (isAxiosError(error) && error.response?.status === 419) {
         try {
           await ensureCsrfCookie(true);
-          const response = await api.post(`/orders/${orderId}/received`, {});
+          const response = await api.post(`/v1/orders/${orderId}/received`, {});
           const source = toObject(response.data);
           return mapOrder(source.data);
         } catch (retryError) {
@@ -664,14 +664,14 @@ export const customerOrdersApi = {
   async cancelOrder(orderId: string): Promise<CustomerOrder> {
     try {
       await ensureCsrfCookie();
-      const response = await api.post(`/orders/${orderId}/cancel`, {});
+      const response = await api.post(`/v1/orders/${orderId}/cancel`, {});
       const source = toObject(response.data);
       return mapOrder(source.data);
     } catch (error) {
       if (isAxiosError(error) && error.response?.status === 419) {
         try {
           await ensureCsrfCookie(true);
-          const response = await api.post(`/orders/${orderId}/cancel`, {});
+          const response = await api.post(`/v1/orders/${orderId}/cancel`, {});
           const source = toObject(response.data);
           return mapOrder(source.data);
         } catch (retryError) {
@@ -692,14 +692,14 @@ export const customerOrdersApi = {
   ): Promise<CustomerOrder> {
     try {
       await ensureCsrfCookie();
-      const response = await api.post(`/orders/${orderId}/trade-in-fulfillment`, payload);
+      const response = await api.post(`/v1/orders/${orderId}/trade-in-fulfillment`, payload);
       const source = toObject(response.data);
       return mapOrder(source.data);
     } catch (error) {
       if (isAxiosError(error) && error.response?.status === 419) {
         try {
           await ensureCsrfCookie(true);
-          const response = await api.post(`/orders/${orderId}/trade-in-fulfillment`, payload);
+          const response = await api.post(`/v1/orders/${orderId}/trade-in-fulfillment`, payload);
           const source = toObject(response.data);
           return mapOrder(source.data);
         } catch (retryError) {

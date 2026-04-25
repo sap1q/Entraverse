@@ -633,9 +633,9 @@ function ProcurementDocumentsModal(props: {
           <button
             type="button"
             onClick={props.onClose}
-            className="inline-flex h-[52px] min-w-[120px] items-center justify-center rounded-[14px] border border-[#C6D6FF] bg-[#EDF3FF] px-5 text-[16px] font-semibold text-[#17243F]"
+            className="inline-flex h-[52px]  items-center justify-center rounded-[14px] border border-[#C6D6FF] bg-[#EDF3FF] px-5 text-[16px] font-semibold text-[#17243F]"
           >
-            Tutup
+            X
           </button>
         </div>
 

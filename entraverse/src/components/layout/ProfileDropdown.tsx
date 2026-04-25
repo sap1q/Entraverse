@@ -142,8 +142,8 @@ export function ProfileDropdown({
   const [open, setOpen] = useState(false);
   const [brokenAvatarUrl, setBrokenAvatarUrl] = useState<string | null>(null);
 
-  const displayName = isLoggedIn ? user?.name?.trim() || "Godzilla D. White" : "Guest";
-  const displayEmail = isLoggedIn ? user?.email?.trim() || "user@example.com" : null;
+  const displayName = isLoggedIn ? user?.name?.trim() || "Pengguna" : "Guest";
+  const displayEmail = isLoggedIn ? user?.email?.trim() || null : null;
   const initials = isLoggedIn
     ? user?.initials?.trim() || getInitials(displayName, "U")
     : "G";

@@ -12,7 +12,12 @@ class BannerResource extends JsonResource
         $imageUrl = $this->image_url;
 
         if ($this->image_path) {
-            $imageUrl = route('banners.image', ['path' => ltrim((string) $this->image_path, '/')]);
+            try {
+                $imageUrl = route('banners.image', ['path' => ltrim((string) $this->image_path, '/')]);
+            } catch (\Exception $e) {
+                // Fallback to direct URL if route fails
+                $imageUrl = url('/api/v1/banners/image/' . ltrim((string) $this->image_path, '/'));
+            }
         }
 
         return [

@@ -14,13 +14,13 @@ const ADMIN_API_PATTERNS = [
 ] as const;
 
 const CUSTOMER_API_PATTERNS = [
-  /^\/user(?:\/|$)/,
-  /^\/logout(?:\/|$)/,
-  /^\/user-addresses(?:\/|$)/,
-  /^\/shipping\/cost(?:\/|$)/,
-  /^\/checkout\/process(?:\/|$)/,
-  /^\/orders(?:\/|$)/,
-  /^\/trade-in\/transactions(?:\/|$)/,
+  /^\/(?:v1\/)?user(?:\/|$)/,
+  /^\/(?:v1\/)?logout(?:\/|$)/,
+  /^\/(?:v1\/)?user-addresses(?:\/|$)/,
+  /^\/(?:v1\/)?shipping\/cost(?:\/|$)/,
+  /^\/(?:v1\/)?checkout\/process(?:\/|$)/,
+  /^\/(?:v1\/)?orders(?:\/|$)/,
+  /^\/(?:v1\/)?trade-in\/transactions(?:\/|$)/,
 ] as const;
 
 export const normalizeRequestPath = (url: string): string => {

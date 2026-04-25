@@ -19,6 +19,12 @@ import {
   uploadAdminAsset,
   type AdminRole,
 } from "@/lib/server/admin-store";
+import {
+  buildBackendStorefrontApiUrl,
+  createForwardHeaders,
+  readProxyRequestBody,
+  toProxyResponse,
+} from "@/lib/server/storefront-proxy";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +42,55 @@ type MockAdmin = {
   last_login_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+};
+
+const canProxyBackendV1Route = (method: string, path: string[]): boolean => {
+  const [firstSegment = "", secondSegment = "", thirdSegment = ""] = path;
+  const normalizedMethod = method.toUpperCase();
+
+  if (normalizedMethod === "GET") {
+    if (firstSegment === "categories" || firstSegment === "brands" || firstSegment === "rajaongkir") {
+      return true;
+    }
+
+    if (firstSegment === "banners") {
+      return secondSegment === "active" || secondSegment === "image";
+    }
+
+    if (firstSegment === "products") {
+      return thirdSegment !== "reviews";
+    }
+  }
+
+  if (normalizedMethod === "POST" && firstSegment === "warranties" && secondSegment === "lookup") {
+    return true;
+  }
+
+  return false;
+};
+
+const proxyBackendV1Request = async (
+  request: NextRequest,
+  path: string[]
+): Promise<NextResponse | null> => {
+  if (!canProxyBackendV1Route(request.method, path)) {
+    return null;
+  }
+
+  const targetPath = `/v1/${path.join("/")}`;
+  const targetUrl = buildBackendStorefrontApiUrl(targetPath);
+  if (!targetUrl) {
+    return null;
+  }
+
+  const response = await fetch(`${targetUrl}${request.nextUrl.search}`, {
+    method: request.method,
+    headers: createForwardHeaders(request),
+    body: await readProxyRequestBody(request),
+    cache: "no-store",
+  });
+
+  return toProxyResponse(response);
 };
 
 const AUTH_EXPIRES_IN = 60 * 60 * 24 * 7;
@@ -984,6 +1039,11 @@ const patchAdminProductStatus = async (request: NextRequest, id: string) => {
 export async function GET(request: NextRequest, context: RouteContext) {
   const { path = [] } = await context.params;
   const searchParams = request.nextUrl.searchParams;
+  const backendResponse = await proxyBackendV1Request(request, path);
+
+  if (backendResponse) {
+    return backendResponse;
+  }
 
   if (path.length === 1 && path[0] === "categories") return listCategoryRows(searchParams);
   if (path.length === 2 && path[0] === "categories") return getCategoryById(path[1]);
@@ -1037,6 +1097,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const { path = [] } = await context.params;
+  const backendResponse = await proxyBackendV1Request(request, path);
+
+  if (backendResponse) {
+    return backendResponse;
+  }
 
   if (path.length === 2 && path[0] === "admin" && path[1] === "login") {
     if (!isMockAdminAuthAvailable()) {

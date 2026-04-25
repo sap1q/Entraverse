@@ -169,6 +169,38 @@ export const clearAdminSessionCookies = (cookies: CookieWriter): void => {
   cookies.set(ADMIN_SESSION_HINT_COOKIE, "", getCookieOptions(0, false));
 };
 
+const normalizeBackendStorefrontPath = (path: string, apiBaseUrl: string): string => {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  if (normalizedPath.startsWith("/v1/")) {
+    return normalizedPath;
+  }
+
+  const hasApiV1 = /\/api\/v1$/i.test(normalizeBaseUrl(apiBaseUrl));
+  const prefix = hasApiV1 ? "" : "/v1";
+
+  if (normalizedPath === "/user" || normalizedPath.startsWith("/user/")) {
+    return `${prefix}${normalizedPath}`;
+  }
+
+  if (normalizedPath === "/user-addresses" || normalizedPath.startsWith("/user-addresses/")) {
+    return `${prefix}/user/addresses${normalizedPath.slice("/user-addresses".length)}`;
+  }
+
+  if (normalizedPath === "/user/addresses" || normalizedPath.startsWith("/user/addresses/")) {
+    return `${prefix}${normalizedPath}`;
+  }
+
+  if (normalizedPath === "/orders" || normalizedPath.startsWith("/orders/")) {
+    return `${prefix}${normalizedPath}`;
+  }
+
+  if (normalizedPath === "/shipping/cost" || normalizedPath === "/checkout/process" || normalizedPath === "/trade-in/transactions") {
+    return `${prefix}${normalizedPath}`;
+  }
+
+  return normalizedPath;
+};
+
 export const getBackendApiBaseUrl = (): string | null => {
   const configuredValue = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (!configuredValue) return null;
@@ -178,6 +210,6 @@ export const getBackendApiBaseUrl = (): string | null => {
 export const buildBackendApiUrl = (path: string): string | null => {
   const baseUrl = getBackendApiBaseUrl();
   if (!baseUrl) return null;
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const normalizedPath = normalizeBackendStorefrontPath(path, baseUrl);
   return `${baseUrl}${normalizedPath}`;
 };
