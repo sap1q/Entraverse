@@ -18,6 +18,7 @@ import {
 } from "@/lib/product-media";
 import { normalizeDescriptionHtml } from "@/lib/description";
 import { normalizeSharedInventoryMatrix, sumSharedInventoryStockFromCombinations } from "@/lib/sharedInventory";
+import { createClientId } from "@/lib/client-id";
 
 type RawMatrixRow = Record<string, unknown>;
 
@@ -116,7 +117,7 @@ const ensureWarrantyVariantDefaults = (variants: VariantDefinition[]): VariantDe
 
   return [
     {
-      id: crypto.randomUUID(),
+      id: createClientId("variant"),
       name: DEFAULT_WARRANTY_VARIANT_NAME,
       options: [...DEFAULT_WARRANTY_OPTIONS],
       draftOption: "",
@@ -134,7 +135,7 @@ const normalizeVariantDefinitions = (product: ProductDetail): VariantDefinition[
       const options = Array.isArray(item.options)
         ? item.options.map((entry) => toText(entry).trim()).filter(Boolean)
         : [];
-      return { id: crypto.randomUUID(), name, options, draftOption: "" };
+      return { id: createClientId("variant"), name, options, draftOption: "" };
     })
     .filter((item) => item.name.length > 0 && item.options.length > 0);
 
@@ -158,7 +159,7 @@ const normalizeVariantDefinitions = (product: ProductDetail): VariantDefinition[
 
   const derived = Array.from(optionMap.entries())
     .map(([name, options]) => ({
-      id: crypto.randomUUID(),
+      id: createClientId("variant"),
       name,
       options: Array.from(options),
       draftOption: "",
@@ -168,7 +169,7 @@ const normalizeVariantDefinitions = (product: ProductDetail): VariantDefinition[
   return ensureWarrantyVariantDefaults(
     derived.length > 0
       ? derived
-      : [{ id: crypto.randomUUID(), name: "Garansi", options: ["Tanpa Garansi"], draftOption: "" }]
+      : [{ id: createClientId("variant"), name: "Garansi", options: ["Tanpa Garansi"], draftOption: "" }]
   );
 };
 
@@ -219,10 +220,14 @@ const buildVariantCombinationsForPrefill = (variants: VariantDefinition[]) => {
   });
 };
 
-const mapPricingRow = (row: RawMatrixRow, fallbackWeight = 0): MatrixPricing => ({
+const mapPricingRow = (row: RawMatrixRow, fallbackWeight = 0, fallbackPurchasePrice = 0): MatrixPricing => ({
   ...DEFAULT_MATRIX_ROW,
   stock: Math.max(0, toNumber(firstDefined(row, ["stock"]))),
-  purchasePrice: Math.max(0, toNumber(firstDefined(row, ["purchase_price", "purchasePrice"]))),
+  purchasePrice: Math.max(
+    0,
+    toNumber(firstDefined(row, ["purchase_price", "purchasePrice", "purchase_price_idr", "purchasePriceIdr", "cost"])) ||
+      Math.max(0, toNumber(fallbackPurchasePrice))
+  ),
   currency: (toText(firstDefined(row, ["currency"])) as MatrixPricing["currency"]) || DEFAULT_MATRIX_ROW.currency,
   exchangeRate: Math.max(0, toNumber(firstDefined(row, ["exchange_rate", "exchangeRate"]))),
   exchangeValue: Math.max(0, toNumber(firstDefined(row, ["exchange_value", "exchangeValue"]))),
@@ -268,6 +273,10 @@ const buildPrefilledState = (product: ProductDetail): ProductFormState => {
   const variantNames = variantDefinitions.map((variant) => variant.name);
   const rawInventory = product.inventory && typeof product.inventory === "object" ? product.inventory : {};
   const inventoryWeight = Math.max(0, toNumber(rawInventory.weight));
+  const inventoryPurchasePrice = Math.max(
+    0,
+    toNumber(firstDefined(rawInventory as RawMatrixRow, ["cost", "jurnal_cost", "purchase_price", "purchase_price_idr"]))
+  );
   const pricingRows = Array.isArray(product.variant_pricing) ? product.variant_pricing : [];
   const matrix: Record<string, MatrixPricing> = {};
 
@@ -278,11 +287,11 @@ const buildPrefilledState = (product: ProductDetail): ProductFormState => {
     const keyFromOptions = buildVariantKey(options, variantNames);
     const keyFromLabel = combinationByLabel.get(toText(rowObj.label).trim().toLowerCase());
     const key = keyFromOptions !== "default" ? keyFromOptions : (keyFromLabel ?? "default");
-    matrix[key] = mapPricingRow(row as RawMatrixRow, inventoryWeight);
+    matrix[key] = mapPricingRow(row as RawMatrixRow, inventoryWeight, inventoryPurchasePrice);
   });
 
   if (Object.keys(matrix).length === 0) {
-    matrix.default = { ...DEFAULT_MATRIX_ROW };
+    matrix.default = { ...DEFAULT_MATRIX_ROW, purchasePrice: inventoryPurchasePrice };
   }
 
   const normalizedMatrix = normalizeSharedInventoryMatrix(matrix);
@@ -582,4 +591,3 @@ export default function EditProductPage() {
     </div>
   );
 }
-

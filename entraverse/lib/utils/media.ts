@@ -1,6 +1,37 @@
 import { resolveApiOriginUrl } from "@/lib/api-config";
+import { STOREFRONT_MEDIA_PROXY_PREFIX } from "@/src/constants/auth-cookies";
 
 const PROFILE_AVATAR_CACHE_KEY = "entraverse_profile_avatar_preview";
+
+const ABSOLUTE_URL_REGEX = /^(https?:)?\/\//i;
+
+const normalizePath = (value: string): string => {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed.replace(/^\/+/, "")}`;
+};
+
+const toStorefrontMediaProxyUrl = (value: string): string | null => {
+  const absoluteApiOrigin = resolveApiOriginUrl("/");
+
+  try {
+    const assetUrl = new URL(value, absoluteApiOrigin);
+    const apiOriginUrl = new URL(absoluteApiOrigin);
+    const isLegacyLocalBackendHost =
+      assetUrl.hostname === "localhost" ||
+      assetUrl.hostname === "127.0.0.1" ||
+      assetUrl.hostname === "::1";
+
+    if (assetUrl.origin !== apiOriginUrl.origin && !isLegacyLocalBackendHost) {
+      return assetUrl.toString();
+    }
+
+    const path = `${assetUrl.pathname}${assetUrl.search}`;
+    return `${STOREFRONT_MEDIA_PROXY_PREFIX}${path.startsWith("/") ? path : `/${path}`}`;
+  } catch {
+    return null;
+  }
+};
 
 export const resolveApiAssetUrl = (value: string | null | undefined): string | null => {
   if (!value) return null;
@@ -8,7 +39,19 @@ export const resolveApiAssetUrl = (value: string | null | undefined): string | n
   const trimmed = value.trim();
   if (!trimmed) return null;
 
-  return resolveApiOriginUrl(trimmed);
+  if (trimmed.startsWith(STOREFRONT_MEDIA_PROXY_PREFIX)) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith("/")) {
+    return toStorefrontMediaProxyUrl(trimmed) ?? normalizePath(trimmed);
+  }
+
+  if (ABSOLUTE_URL_REGEX.test(trimmed)) {
+    return toStorefrontMediaProxyUrl(trimmed) ?? trimmed;
+  }
+
+  return toStorefrontMediaProxyUrl(resolveApiOriginUrl(trimmed)) ?? resolveApiOriginUrl(trimmed);
 };
 
 export const getNameInitials = (value: string | null | undefined, fallback = "U"): string => {

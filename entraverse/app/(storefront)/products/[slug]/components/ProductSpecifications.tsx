@@ -27,7 +27,6 @@ export const ProductSpecifications = ({ product }: ProductSpecificationsProps) =
       { label: "SKU", value: product.sku || "-" },
       { label: "Dimensi", value: formatDimension(product.dimensions) },
       { label: "Barcode", value: product.barcode || "-" },
-      { label: "Garansi", value: product.warranty || "-" },
     ];
 
     const technicalRows = Object.entries(product.specifications).map(([key, value]) => ({

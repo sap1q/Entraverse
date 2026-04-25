@@ -327,7 +327,7 @@ export const userAddressApi = {
     }
 
     const nextRequest = api
-      .get<UserAddressApiResponse<RegionOption[]>>("/rajaongkir/provinces")
+      .get<UserAddressApiResponse<RegionOption[]>>("/v1/rajaongkir/provinces")
       .then((response) => {
         const rows = extractRegionList(response.data);
         regionCache.provinces = cloneRegionOptions(rows);
@@ -348,7 +348,7 @@ export const userAddressApi = {
       regionCache.cities,
       regionPendingRequests.cities,
       async () => {
-        const response = await api.get<UserAddressApiResponse<RegionOption[]>>("/rajaongkir/cities", {
+        const response = await api.get<UserAddressApiResponse<RegionOption[]>>("/v1/rajaongkir/cities", {
           params: { province_id: provinceId },
         });
 
@@ -364,7 +364,7 @@ export const userAddressApi = {
       regionCache.subdistricts,
       regionPendingRequests.subdistricts,
       async () => {
-        const response = await api.get<UserAddressApiResponse<RegionOption[]>>("/rajaongkir/subdistricts", {
+        const response = await api.get<UserAddressApiResponse<RegionOption[]>>("/v1/rajaongkir/subdistricts", {
           params: { district_id: districtId },
         });
 
@@ -380,7 +380,7 @@ export const userAddressApi = {
       regionCache.districts,
       regionPendingRequests.districts,
       async () => {
-        const response = await api.get<UserAddressApiResponse<RegionOption[]>>("/rajaongkir/districts", {
+        const response = await api.get<UserAddressApiResponse<RegionOption[]>>("/v1/rajaongkir/districts", {
           params: { city_id: cityId },
         });
 

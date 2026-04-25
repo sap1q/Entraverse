@@ -982,7 +982,6 @@ export default function ReportsPage() {
                 <RefreshCcw className={`h-4 w-4 ${autoStockState.loading ? "animate-spin" : ""}`} />
                 {autoStockState.loading ? "Menyinkronkan..." : "Sinkronkan Sekarang"}
               </button>
-              <p className="text-center text-xs font-medium text-blue-700">(Otomatis via API)</p>
 
               <div className="flex items-center gap-2 text-blue-700">
                 <CalendarRange className="h-4 w-4" />

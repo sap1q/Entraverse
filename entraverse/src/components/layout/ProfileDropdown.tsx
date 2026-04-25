@@ -48,6 +48,7 @@ type ProfileDropdownUser = {
 
 type ProfileDropdownProps = {
   variant?: "default" | "overlay";
+  size?: "default" | "compact";
   isLoggedIn: boolean;
   user?: ProfileDropdownUser;
   onLogout?: () => void;
@@ -81,7 +82,7 @@ function MenuItemButton({ item, onClose }: MenuItemButtonProps) {
   const Icon = item.icon;
   const isDanger = item.tone === "danger";
   const itemClassName = cn(
-    "group flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-left font-sans transition-colors duration-150 focus-visible:outline-none",
+    "group flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left font-sans transition-colors duration-150 focus-visible:outline-none",
     isDanger
       ? "text-rose-600 hover:bg-rose-50 focus-visible:bg-rose-50"
       : "text-slate-700 hover:bg-purple-50 hover:text-purple-600 focus-visible:bg-purple-50 focus-visible:text-purple-600"
@@ -124,6 +125,7 @@ function MenuItemButton({ item, onClose }: MenuItemButtonProps) {
 
 export function ProfileDropdown({
   variant = "default",
+  size = "default",
   isLoggedIn,
   user,
   onLogout,
@@ -140,14 +142,15 @@ export function ProfileDropdown({
   const [open, setOpen] = useState(false);
   const [brokenAvatarUrl, setBrokenAvatarUrl] = useState<string | null>(null);
 
-  const displayName = isLoggedIn ? user?.name?.trim() || "Godzilla D. White" : "Guest";
-  const displayEmail = isLoggedIn ? user?.email?.trim() || "user@example.com" : null;
+  const displayName = isLoggedIn ? user?.name?.trim() || "Pengguna" : "Guest";
+  const displayEmail = isLoggedIn ? user?.email?.trim() || null : null;
   const initials = isLoggedIn
     ? user?.initials?.trim() || getInitials(displayName, "U")
     : "G";
   const activeAvatarUrl = user?.avatarUrl ?? null;
   const showAvatarImage = Boolean(activeAvatarUrl && brokenAvatarUrl !== activeAvatarUrl);
   const isOverlay = variant === "overlay";
+  const isCompact = size === "compact";
 
   useEffect(() => {
     if (!open) return;
@@ -209,7 +212,8 @@ export function ProfileDropdown({
       <button
         type="button"
         className={cn(
-          "inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border transition-[background-color,color,border-color,box-shadow] duration-300",
+          "inline-flex items-center justify-center overflow-hidden rounded-full border transition-[background-color,color,border-color,box-shadow] duration-300",
+          isCompact ? "h-9 w-9" : "h-11 w-11",
           isOverlay
             ? "border-white/15 bg-white/[0.08] text-white shadow-[0_12px_30px_rgba(15,23,42,0.14)] hover:border-white/30 hover:bg-white/[0.14]"
             : "border-slate-200 bg-white text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.08)] hover:border-purple-200 hover:text-purple-600"
@@ -227,10 +231,20 @@ export function ProfileDropdown({
             className="h-full w-full rounded-full object-cover"
             onError={() => setBrokenAvatarUrl(activeAvatarUrl)}
           />
+        ) : !isLoggedIn ? (
+          <span
+            className={cn(
+              "inline-flex h-full w-full items-center justify-center rounded-full",
+              isOverlay ? "bg-white/[0.14] text-white" : "bg-slate-100 text-slate-500"
+            )}
+          >
+            <User className={cn(isCompact ? "h-4.5 w-4.5" : "h-6 w-6")} strokeWidth={1.9} />
+          </span>
         ) : (
           <span
             className={cn(
-              "inline-flex h-full w-full items-center justify-center rounded-full text-xs font-semibold tracking-wide",
+              "inline-flex h-full w-full items-center justify-center rounded-full font-semibold tracking-wide",
+              isCompact ? "text-[10px]" : "text-xs",
               isOverlay ? "bg-white/[0.18] text-white" : "bg-slate-900 text-white"
             )}
           >
@@ -246,7 +260,7 @@ export function ProfileDropdown({
             animate="visible"
             exit="exit"
             variants={panelMotion}
-            className="absolute right-0 top-[calc(100%+12px)] z-[80] w-[min(92vw,340px)] origin-top-right rounded-[28px] border border-slate-200/80 bg-white p-3 shadow-[0_22px_65px_rgba(15,23,42,0.16)]"
+            className="absolute right-0 top-[calc(100%+12px)] z-[80] w-[min(92vw,340px)] origin-top-right rounded-[12px] border border-slate-200/80 bg-white p-3 shadow-[0_22px_65px_rgba(15,23,42,0.16)]"
             role="menu"
             aria-label="Menu profil"
           >
@@ -254,7 +268,7 @@ export function ProfileDropdown({
               <div className="space-y-4 p-1">
                 <Link
                   href={guestLoginHref}
-                  className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-blue-500 px-4 text-sm font-semibold text-white transition-colors hover:bg-blue-600"
+                  className="inline-flex h-11 w-full items-center justify-center rounded-[10px] bg-blue-500 px-4 text-sm font-semibold text-white transition-colors hover:bg-blue-600"
                   onClick={() => setOpen(false)}
                 >
                   Login

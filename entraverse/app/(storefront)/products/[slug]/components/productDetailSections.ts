@@ -21,7 +21,6 @@ export const buildProductSpecificationRows = (product: ProductDetail): ProductDe
     { label: "SKU", value: product.sku || "-" },
     { label: "Dimensi", value: formatDimension(product.dimensions) },
     { label: "Barcode", value: product.barcode || "-" },
-    { label: "Garansi", value: product.warranty || "-" },
   ];
 
   const technicalRows: ProductDetailRow[] = Object.entries(product.specifications ?? {})

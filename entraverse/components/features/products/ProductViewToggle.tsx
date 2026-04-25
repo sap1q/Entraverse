@@ -19,13 +19,15 @@ export const ProductViewToggle = () => {
   };
 
   return (
-    <div className="inline-flex items-center rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+    <div className="inline-flex items-center rounded-xl border border-slate-200 bg-white p-1">
       <button
         type="button"
         onClick={() => handleToggle("grid")}
         className={cn(
-          "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium transition",
-          activeView === "grid" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100"
+          "inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-300",
+          activeView === "grid"
+            ? "bg-blue-600 text-white"
+            : "text-slate-600 hover:bg-slate-100"
         )}
         aria-label="Tampilan grid"
       >
@@ -36,8 +38,10 @@ export const ProductViewToggle = () => {
         type="button"
         onClick={() => handleToggle("list")}
         className={cn(
-          "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium transition",
-          activeView === "list" ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100"
+          "inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-300",
+          activeView === "list"
+            ? "bg-blue-600 text-white"
+            : "text-slate-600 hover:bg-slate-100"
         )}
         aria-label="Tampilan list"
       >

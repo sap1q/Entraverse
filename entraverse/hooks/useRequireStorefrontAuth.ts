@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { userProfileApi } from "@/lib/api/user-profile";
+import { clearPersistedAuth } from "@/lib/axios";
 import { AUTH_STATE_EVENT_NAME } from "@/src/lib/auth/tokens";
-import { buildAuthLoginRedirect, getSessionRole, type SessionRole } from "@/src/lib/auth/access";
+import { buildStorefrontLoginRedirect, getSessionRole, type SessionRole } from "@/src/lib/auth/access";
 
 type RequireAuthResult = {
   isAuthenticated: boolean;
@@ -17,6 +19,7 @@ export const useRequireStorefrontAuth = (redirectPath?: string): RequireAuthResu
   const searchParams = useSearchParams();
   const [sessionRole, setSessionRole] = useState<SessionRole>("guest");
   const [hasHydrated, setHasHydrated] = useState(false);
+  const [isVerifyingSession, setIsVerifyingSession] = useState(false);
 
   useEffect(() => {
     const syncSessionRole = () => {
@@ -38,17 +41,47 @@ export const useRequireStorefrontAuth = (redirectPath?: string): RequireAuthResu
   useEffect(() => {
     if (!hasHydrated) return;
 
+    if (sessionRole !== "customer") {
+      return;
+    }
+
+    let isCancelled = false;
+    const verifyCustomerSession = async () => {
+      setIsVerifyingSession(true);
+
+      try {
+        await userProfileApi.getProfile();
+        if (isCancelled) return;
+        setIsVerifyingSession(false);
+      } catch {
+        if (isCancelled) return;
+        clearPersistedAuth();
+        setSessionRole("guest");
+        setIsVerifyingSession(false);
+      }
+    };
+
+    void verifyCustomerSession();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [hasHydrated, sessionRole]);
+
+  useEffect(() => {
+    if (!hasHydrated || isVerifyingSession) return;
+
     const nextQuery = searchParams.toString();
     const nextPath = redirectPath ?? `${pathname}${nextQuery ? `?${nextQuery}` : ""}`;
 
     if (sessionRole === "guest") {
-      router.replace(buildAuthLoginRedirect(nextPath));
+      router.replace(buildStorefrontLoginRedirect(nextPath));
     }
-  }, [hasHydrated, pathname, redirectPath, router, searchParams, sessionRole]);
+  }, [hasHydrated, isVerifyingSession, pathname, redirectPath, router, searchParams, sessionRole]);
 
   return {
-    isAuthenticated: hasHydrated && sessionRole !== "guest",
-    isChecking: !hasHydrated || sessionRole === "guest",
+    isAuthenticated: hasHydrated && !isVerifyingSession && sessionRole !== "guest",
+    isChecking: !hasHydrated || isVerifyingSession || sessionRole === "guest",
     sessionRole,
   };
 };

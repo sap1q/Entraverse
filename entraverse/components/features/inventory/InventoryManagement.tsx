@@ -3,7 +3,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Loader2, RefreshCcw, Search, TriangleAlert } from "lucide-react";
+import { ChevronDown, ImageOff, Loader2, RefreshCcw, Search, TriangleAlert } from "lucide-react";
 import api, { isAxiosError } from "@/lib/axios";
 import { resolveApiOriginUrl } from "@/lib/api-config";
 import StockAdjustmentModal, {
@@ -23,6 +23,7 @@ type InventoryRow = {
   variant_name: string;
   warehouse: string;
   current_stock: number;
+  available_stock: number;
   status: InventoryStatus;
   last_update: string | null;
 };
@@ -45,6 +46,7 @@ type InventoryQueryData = {
   rows: InventoryRow[];
   stats: {
     total_sku: number;
+    available_stock: number;
     low_stock_alert: number;
     out_of_stock: number;
   };
@@ -82,10 +84,13 @@ const mutationTypeLabelMap: Record<MutationLog["type"], string> = {
   adjustment: "Adjustment",
 };
 
+const SAFE_STOCK_MIN = 6;
+
 const DEFAULT_INVENTORY_DATA: InventoryQueryData = {
   rows: [],
   stats: {
     total_sku: 0,
+    available_stock: 0,
     low_stock_alert: 0,
     out_of_stock: 0,
   },
@@ -104,9 +109,9 @@ const resolveStocksBaseEndpoint = (): string => {
 };
 
 const normalizeImageUrl = (value: unknown): string => {
-  if (typeof value !== "string") return "/product-placeholder.svg";
+  if (typeof value !== "string") return "";
   const trimmed = value.trim();
-  if (!trimmed) return "/product-placeholder.svg";
+  if (!trimmed) return "";
   if (/^(blob:|data:|https?:\/\/)/i.test(trimmed)) return trimmed;
   if (trimmed.startsWith("/")) return resolveApiOriginUrl(trimmed);
   return resolveApiOriginUrl(`/storage/products/${trimmed}`);
@@ -150,7 +155,7 @@ const buildErrorMessage = (error: unknown, fallback: string): string => {
 
 const resolveStatusFromStock = (stock: number): InventoryStatus => {
   if (stock <= 0) return "empty";
-  if (stock < 10) return "low";
+  if (stock < SAFE_STOCK_MIN) return "low";
   return "safe";
 };
 
@@ -221,6 +226,8 @@ type InventoryTableRowProps = {
 };
 
 function InventoryTableRow({ row, expanded, onToggle, onAdjust }: InventoryTableRowProps) {
+  const productImage = normalizeImageUrl(row.product_image);
+  const hasProductImage = productImage.length > 0;
   const {
     data: mutations = [],
     isFetching: mutationLoading,
@@ -256,17 +263,36 @@ function InventoryTableRow({ row, expanded, onToggle, onAdjust }: InventoryTable
         <td className="border-b border-slate-100 px-3 py-3 align-top">
           <div className="flex items-start gap-3">
             <div className="h-12 w-12 overflow-hidden rounded-lg border border-slate-100 bg-white">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={normalizeImageUrl(row.product_image)}
-                alt={row.product_name}
-                className="h-full w-full object-cover"
-                onError={(event) => {
-                  if (event.currentTarget.dataset.fallbackApplied === "1") return;
-                  event.currentTarget.dataset.fallbackApplied = "1";
-                  event.currentTarget.src = "/product-placeholder.svg";
-                }}
-              />
+              {hasProductImage ? (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={productImage}
+                    alt={row.product_name}
+                    className="h-full w-full object-cover"
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                      const fallback = event.currentTarget.nextElementSibling;
+                      if (fallback instanceof HTMLElement) {
+                        fallback.style.display = "flex";
+                      }
+                    }}
+                  />
+                  <div className="hidden h-full w-full items-center justify-center bg-slate-50 text-slate-400">
+                    <div className="flex flex-col items-center gap-1">
+                      <ImageOff className="h-4 w-4" />
+                      <span className="text-[7px] font-semibold uppercase tracking-[0.16em]">No Image</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-400">
+                  <div className="flex flex-col items-center gap-1">
+                    <ImageOff className="h-4 w-4" />
+                    <span className="text-[7px] font-semibold uppercase tracking-[0.16em]">No Image</span>
+                  </div>
+                </div>
+              )}
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-800">{row.product_name}</p>
@@ -280,6 +306,11 @@ function InventoryTableRow({ row, expanded, onToggle, onAdjust }: InventoryTable
         <td className="border-b border-slate-100 px-3 py-3">
           <span className="inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
             {row.current_stock}
+          </span>
+        </td>
+        <td className="border-b border-slate-100 px-3 py-3">
+          <span className="inline-flex rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700">
+            {row.available_stock}
           </span>
         </td>
         <td className="border-b border-slate-100 px-3 py-3 text-sm text-slate-600">{formatDateTime(row.last_update)}</td>
@@ -304,7 +335,7 @@ function InventoryTableRow({ row, expanded, onToggle, onAdjust }: InventoryTable
       <AnimatePresence initial={false}>
         {expanded ? (
           <tr className="bg-slate-50/70">
-            <td colSpan={8} className="border-b border-slate-100 px-4 pb-4">
+            <td colSpan={9} className="border-b border-slate-100 px-4 pb-4">
               <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
@@ -422,23 +453,37 @@ export default function InventoryManagement() {
         if (!current) return current;
 
         const rows = current.rows.map((row) => {
-          if (
-            row.product_id !== payload.product_id ||
-            row.sku !== payload.variant_sku ||
-            row.warehouse !== payload.warehouse
-          ) {
+          if (row.product_id !== payload.product_id || row.sku !== payload.variant_sku) {
             return row;
           }
+
+          const nextAvailableStock = row.available_stock + delta;
+          if (row.warehouse !== payload.warehouse) {
+            return {
+              ...row,
+              available_stock: nextAvailableStock,
+              last_update: new Date().toISOString(),
+            };
+          }
+
           const nextStock = row.current_stock + delta;
           return {
             ...row,
             current_stock: nextStock,
+            available_stock: nextAvailableStock,
             status: resolveStatusFromStock(nextStock),
             last_update: new Date().toISOString(),
           };
         });
 
-        return { ...current, rows };
+        return {
+          ...current,
+          rows,
+          stats: {
+            ...current.stats,
+            available_stock: current.stats.available_stock + delta,
+          },
+        };
       });
 
       return { previous };
@@ -515,10 +560,14 @@ export default function InventoryManagement() {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
           <p className="text-sm text-slate-500">Total SKU</p>
           <p className="mt-2 text-2xl font-semibold text-slate-800">{data.stats.total_sku}</p>
+        </article>
+        <article className="rounded-xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
+          <p className="text-sm text-blue-700">Available Stock</p>
+          <p className="mt-2 text-2xl font-semibold text-blue-800">{data.stats.available_stock}</p>
         </article>
         <article className="rounded-xl border border-amber-100 bg-amber-50 p-4 shadow-sm">
           <p className="text-sm text-amber-700">Low Stock Alert</p>
@@ -609,7 +658,7 @@ export default function InventoryManagement() {
         ) : null}
 
         <div className="mt-4 overflow-x-auto">
-          <table className="min-w-[1100px] w-full border-separate border-spacing-0">
+          <table className="min-w-[1180px] w-full border-separate border-spacing-0">
             <thead>
               <tr className="border-b border-slate-100">
                 <th className="border-b border-slate-100 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -628,6 +677,9 @@ export default function InventoryManagement() {
                   Current Stock
                 </th>
                 <th className="border-b border-slate-100 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Available Stock
+                </th>
+                <th className="border-b border-slate-100 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   Last Update
                 </th>
                 <th className="border-b border-slate-100 px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -642,14 +694,14 @@ export default function InventoryManagement() {
               {isLoading ? (
                 Array.from({ length: 6 }).map((_, index) => (
                   <tr key={`inventory-loading-${index}`}>
-                    <td colSpan={8} className="border-b border-slate-100 px-3 py-4">
+                    <td colSpan={9} className="border-b border-slate-100 px-3 py-4">
                       <div className="h-10 animate-pulse rounded-lg bg-slate-100" />
                     </td>
                   </tr>
                 ))
               ) : data.rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-10 text-center text-sm text-slate-500">
+                  <td colSpan={9} className="px-3 py-10 text-center text-sm text-slate-500">
                     Data inventory tidak ditemukan untuk filter saat ini.
                   </td>
                 </tr>

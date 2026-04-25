@@ -11,6 +11,7 @@ import {
   ChevronRight,
   ChevronUp,
   ExternalLink,
+  ImageOff,
   Link2,
   Link2Off,
   Loader2,
@@ -81,6 +82,7 @@ type VariantRow = {
 type SpuRow = {
   id: string;
   photo: string;
+  hasPhoto: boolean;
   name: string;
   spu: string;
   brand: string;
@@ -153,7 +155,7 @@ const resolvePrimaryPhoto = (product: ApiProduct): string => {
 
   const explicitPrimary = normalizedPhotos.find((entry) => entry.isPrimary);
   if (explicitPrimary) return explicitPrimary.url;
-  return normalizedPhotos[0]?.url ?? "/product-placeholder.svg";
+  return normalizedPhotos[0]?.url ?? "";
 };
 
 const resolveProductsEndpoint = (): string => {
@@ -211,6 +213,7 @@ const extractPaginationMeta = (payload: unknown): PaginationMeta => {
 };
 
 const mapProductToSpuRow = (product: ApiProduct): SpuRow => {
+  const primaryPhoto = resolvePrimaryPhoto(product);
   const variantRows = Array.isArray(product.variant_pricing) ? product.variant_pricing : [];
   const variants: VariantRow[] = variantRows.map((row, index) => {
     const label = String(row.label ?? row.variant_name ?? row.name ?? "Default Variant");
@@ -266,7 +269,8 @@ const mapProductToSpuRow = (product: ApiProduct): SpuRow => {
 
   return {
     id: product.id,
-    photo: resolvePrimaryPhoto(product),
+    photo: primaryPhoto,
+    hasPhoto: primaryPhoto.length > 0,
     name: product.name,
     spu: product.spu ?? "-",
     brand: product.brand ?? "-",
@@ -1201,17 +1205,36 @@ export default function MarketplaceProdukPage() {
                           <div className="grid grid-cols-[minmax(0,1fr)_140px_150px_150px] items-center gap-3">
                             <div className="flex items-start gap-3">
                               <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-gray-100 bg-white">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                  src={product.photo || "/product-placeholder.svg"}
-                                  alt={product.name}
-                                  className="h-full w-full object-cover"
-                                  onError={(event) => {
-                                    if (event.currentTarget.dataset.fallbackApplied === "1") return;
-                                    event.currentTarget.dataset.fallbackApplied = "1";
-                                    event.currentTarget.src = "/product-placeholder.svg";
-                                  }}
-                                />
+                                {product.hasPhoto ? (
+                                  <>
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={product.photo}
+                                      alt={product.name}
+                                      className="h-full w-full object-cover"
+                                      onError={(event) => {
+                                        event.currentTarget.style.display = "none";
+                                        const fallback = event.currentTarget.nextElementSibling;
+                                        if (fallback instanceof HTMLElement) {
+                                          fallback.style.display = "flex";
+                                        }
+                                      }}
+                                    />
+                                    <div className="hidden h-full w-full items-center justify-center bg-slate-50 text-slate-400">
+                                      <div className="flex flex-col items-center gap-1">
+                                        <ImageOff className="h-4 w-4" />
+                                        <span className="text-[7px] font-semibold uppercase tracking-[0.16em]">No Image</span>
+                                      </div>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-400">
+                                    <div className="flex flex-col items-center gap-1">
+                                      <ImageOff className="h-4 w-4" />
+                                      <span className="text-[7px] font-semibold uppercase tracking-[0.16em]">No Image</span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                               <div>
                                 <p className="text-sm font-semibold text-slate-800">{product.name}</p>
@@ -1463,17 +1486,36 @@ export default function MarketplaceProdukPage() {
             <div className="space-y-5 p-5">
               <div className="grid gap-3 sm:grid-cols-[120px_minmax(0,1fr)]">
                 <div className="h-[120px] overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={selectedProduct.photo || "/product-placeholder.svg"}
-                    alt={selectedProduct.name}
-                    className="h-full w-full object-cover"
-                    onError={(event) => {
-                      if (event.currentTarget.dataset.fallbackApplied === "1") return;
-                      event.currentTarget.dataset.fallbackApplied = "1";
-                      event.currentTarget.src = "/product-placeholder.svg";
-                    }}
-                  />
+                  {selectedProduct.hasPhoto ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={selectedProduct.photo}
+                        alt={selectedProduct.name}
+                        className="h-full w-full object-cover"
+                        onError={(event) => {
+                          event.currentTarget.style.display = "none";
+                          const fallback = event.currentTarget.nextElementSibling;
+                          if (fallback instanceof HTMLElement) {
+                            fallback.style.display = "flex";
+                          }
+                        }}
+                      />
+                      <div className="hidden h-full w-full items-center justify-center bg-slate-50 text-slate-400">
+                        <div className="flex flex-col items-center gap-2">
+                          <ImageOff className="h-7 w-7" />
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">No Image</span>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-slate-50 text-slate-400">
+                      <div className="flex flex-col items-center gap-2">
+                        <ImageOff className="h-7 w-7" />
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">No Image</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">

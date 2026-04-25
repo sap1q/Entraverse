@@ -19,17 +19,17 @@ export const ProductBreadcrumb = () => {
   const categorySlug = productsIndex >= 0 ? segments[productsIndex + 1] : undefined;
 
   return (
-    <nav className="flex items-center gap-2 text-sm text-slate-500" aria-label="Breadcrumb">
-      <Link href="/" className="transition-colors hover:text-blue-600">
+    <nav className="flex flex-wrap items-center gap-2 text-sm text-slate-500" aria-label="Breadcrumb">
+      <Link href="/" className="font-medium transition-colors hover:text-blue-600">
         Home
       </Link>
-      <ChevronRight className="h-4 w-4" />
-      <Link href="/products" className="transition-colors hover:text-blue-600">
+      <ChevronRight className="h-4 w-4 text-slate-300" />
+      <Link href="/products" className="font-medium transition-colors hover:text-blue-600">
         Produk
       </Link>
       {categorySlug ? (
         <>
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="h-4 w-4 text-slate-300" />
           <span className="font-medium text-slate-800">{prettifySlug(categorySlug)}</span>
         </>
       ) : null}

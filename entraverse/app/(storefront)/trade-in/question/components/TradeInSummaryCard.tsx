@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { animate } from "framer-motion";
-import { Camera, CircleCheckBig, PackageCheck, Sparkles, Tag } from "lucide-react";
+import { Camera, CircleCheckBig, Sparkles, Tag } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import { formatCurrencyIDR } from "@/lib/utils/formatter";
@@ -16,7 +16,6 @@ type SummaryLine = {
 interface TradeInSummaryCardProps {
   productName: string;
   productImage: string;
-  basePrice: number;
   variantLabel?: string | null;
   estimate: number;
   loading: boolean;
@@ -52,7 +51,6 @@ function AnimatedCurrency({ value }: { value: number }) {
 export function TradeInSummaryCard({
   productName,
   productImage,
-  basePrice,
   variantLabel,
   estimate,
   loading,
@@ -101,17 +99,6 @@ export function TradeInSummaryCard({
       </div>
 
       <div className="mt-5 space-y-3">
-        <div className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4">
-          <PackageCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
-          <div className="text-sm text-slate-600">
-            <p className="font-semibold text-slate-900">Basis kalkulasi harga offline</p>
-            <p className="mt-1 leading-6">
-              Estimasi trade-in dimulai dari harga offline produk, lalu disesuaikan oleh bobot jawaban yang Anda isi.
-            </p>
-            <p className="mt-2 text-sm font-semibold text-slate-900">{formatCurrencyIDR(basePrice)}</p>
-          </div>
-        </div>
-
         <div className="rounded-2xl border border-slate-200 bg-white">
           {summaryLines.length > 0 ? (
             <div className="divide-y divide-slate-100">
@@ -147,7 +134,7 @@ export function TradeInSummaryCard({
           </p>
         </div>
 
-        <div className="space-y-2.5">
+        <div className="hidden space-y-2.5 lg:block">
           <Button
             type="button"
             onClick={onCheckLimit}

@@ -1,4 +1,9 @@
+"use client";
+
+import { usePathname } from "next/navigation";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { ProductDetailSkeleton } from "./products/[slug]/components/ProductDetailSkeleton";
+import TradeInQuestionSkeleton from "./trade-in/question/components/TradeInQuestionSkeleton";
 import CategoryGridSkeleton from "./components/CategoryGridSkeleton";
 
 const SectionHeadingSkeleton = ({
@@ -39,12 +44,12 @@ const ProductCardSkeleton = () => (
   </article>
 );
 
-const BestSellingCarouselSkeleton = () => (
+const ProductCarouselSkeleton = () => (
   <div className="relative">
     <Skeleton className="absolute left-0 top-1/2 hidden h-11 w-11 -translate-y-1/2 rounded-full md:block xl:-left-5" />
     <div className="flex gap-5 overflow-hidden px-9 py-2 md:px-12 lg:gap-6 xl:px-0">
       {Array.from({ length: 5 }).map((_, index) => (
-        <div key={index} className="min-w-[15.5rem] flex-1">
+        <div key={index} className="min-w-[12.5rem] flex-1 sm:min-w-[15.5rem]">
           <ProductCardSkeleton />
         </div>
       ))}
@@ -54,17 +59,29 @@ const BestSellingCarouselSkeleton = () => (
 );
 
 export default function StorefrontLoading() {
+  const pathname = usePathname();
+
+  if (pathname?.startsWith("/trade-in/question")) {
+    return <TradeInQuestionSkeleton />;
+  }
+
+  if (pathname?.startsWith("/products/") && pathname !== "/products") {
+    return (
+      <div className="min-h-screen bg-white py-6">
+        <ProductDetailSkeleton />
+      </div>
+    );
+  }
+
   return (
     <div className="bg-[#f4f5f7]">
       <div className="bg-white">
         <div className="mx-auto w-full max-w-7xl px-4 pb-10 pt-6 md:px-6 md:pb-14 md:pt-8">
-          <div className="overflow-hidden rounded-2xl border border-blue-100 bg-white shadow-sm">
+          <div className="relative overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
             <Skeleton className="aspect-[2/1] w-full rounded-none" />
-            <div className="flex min-h-10 items-center justify-center border-t border-blue-100 bg-white px-4 py-1.5">
-              <div className="inline-flex items-center justify-center gap-1.5">
-                <Skeleton className="h-5 w-5 rounded-full" />
+            <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-4 sm:bottom-4">
+              <div className="inline-flex items-center justify-center gap-1.5 rounded-full border border-white/70 bg-white/85 px-2.5 py-1.5 shadow-[0_12px_30px_rgba(15,23,42,0.12)]">
                 <Skeleton className="h-2 w-14 rounded-full" />
-                <Skeleton className="h-5 w-5 rounded-full" />
               </div>
             </div>
           </div>
@@ -76,19 +93,14 @@ export default function StorefrontLoading() {
       <section className="bg-white py-14 md:py-16">
         <div className="mx-auto w-full max-w-7xl px-4 md:px-6">
           <SectionHeadingSkeleton eyebrowWidth="w-24" titleWidth="w-64 max-w-full" descriptionWidth="w-full max-w-md" />
-          <BestSellingCarouselSkeleton />
+          <ProductCarouselSkeleton />
         </div>
       </section>
 
       <section className="bg-white py-14 md:py-16">
         <div className="mx-auto w-full max-w-7xl px-4 md:px-6">
           <SectionHeadingSkeleton eyebrowWidth="w-28" titleWidth="w-56 max-w-full" descriptionWidth="w-full max-w-xl" />
-
-          <div className="grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-            {Array.from({ length: 12 }).map((_, index) => (
-              <ProductCardSkeleton key={index} />
-            ))}
-          </div>
+          <ProductCarouselSkeleton />
 
           <div className="mt-10 flex justify-center">
             <Skeleton className="h-14 w-full max-w-[17rem] rounded-xl" />

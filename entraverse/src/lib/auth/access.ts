@@ -1,4 +1,10 @@
 import { TokenService } from "@/src/lib/auth/tokens";
+import {
+  ADMIN_SESSION_HINT_COOKIE,
+  ADMIN_PROXY_PREFIX,
+  ADMIN_STOREFRONT_PROXY_PREFIX,
+  STOREFRONT_PROXY_PREFIX,
+} from "@/src/constants/auth-cookies";
 
 export type SessionRole = "guest" | "customer" | "admin";
 
@@ -8,19 +14,35 @@ const ADMIN_API_PATTERNS = [
 ] as const;
 
 const CUSTOMER_API_PATTERNS = [
-  /^\/user(?:\/|$)/,
-  /^\/logout(?:\/|$)/,
-  /^\/user-addresses(?:\/|$)/,
-  /^\/shipping\/cost(?:\/|$)/,
-  /^\/checkout\/process(?:\/|$)/,
-  /^\/orders(?:\/|$)/,
-  /^\/trade-in\/transactions(?:\/|$)/,
+  /^\/(?:v1\/)?user(?:\/|$)/,
+  /^\/(?:v1\/)?logout(?:\/|$)/,
+  /^\/(?:v1\/)?user-addresses(?:\/|$)/,
+  /^\/(?:v1\/)?shipping\/cost(?:\/|$)/,
+  /^\/(?:v1\/)?checkout\/process(?:\/|$)/,
+  /^\/(?:v1\/)?orders(?:\/|$)/,
+  /^\/(?:v1\/)?trade-in\/transactions(?:\/|$)/,
 ] as const;
 
 export const normalizeRequestPath = (url: string): string => {
   const withoutOrigin = url.replace(/^https?:\/\/[^/]+/i, "");
   const withoutQuery = withoutOrigin.split("?")[0] ?? withoutOrigin;
-  return withoutQuery.replace(/^\/api(?=\/)/, "");
+  return withoutQuery
+    .replace(new RegExp(`^${ADMIN_PROXY_PREFIX}(?=/)`), "")
+    .replace(new RegExp(`^${ADMIN_STOREFRONT_PROXY_PREFIX}(?=/)`), "")
+    .replace(new RegExp(`^${STOREFRONT_PROXY_PREFIX}(?=/)`), "")
+    .replace(/^\/api\/admin-proxy(?=\/)/, "")
+    .replace(/^\/api\/admin-storefront-proxy(?=\/)/, "")
+    .replace(/^\/api\/storefront-proxy(?=\/)/, "")
+    .replace(/^\/api(?=\/)/, "");
+};
+
+const hasAdminSessionHint = (): boolean => {
+  if (typeof document === "undefined") return false;
+
+  return document.cookie
+    .split(";")
+    .map((cookie) => cookie.trim())
+    .some((cookie) => cookie.startsWith(`${ADMIN_SESSION_HINT_COOKIE}=`));
 };
 
 export const isAdminApiPath = (url: string): boolean => {
@@ -39,15 +61,39 @@ export const usesAuthenticatedApi = (url: string): boolean => {
 };
 
 export const getSessionRole = (): SessionRole => {
-  if (!TokenService.hasValidToken()) return "guest";
-  return TokenService.getUserType() === "admin" ? "admin" : "customer";
+  if (TokenService.hasValidToken()) {
+    return TokenService.getUserType() === "admin" ? "admin" : "customer";
+  }
+
+  const userType = TokenService.getUserType();
+  const userProfile = TokenService.getUserProfile();
+  if (userType === "customer" && userProfile) {
+    return "customer";
+  }
+
+  const hasAdminProfile = TokenService.getUserType() === "admin" && Boolean(TokenService.getUserProfile());
+  if (hasAdminProfile || hasAdminSessionHint()) {
+    return "admin";
+  }
+
+  return "guest";
 };
 
 export const hasStorefrontSession = (): boolean => {
-  return getSessionRole() !== "guest";
+  const role = getSessionRole();
+  return role === "customer" || role === "admin";
 };
 
-export const buildAuthLoginRedirect = (path: string): string => {
+export const hasStorefrontAccountSession = (): boolean => {
+  const role = getSessionRole();
+  return role === "customer" || role === "admin";
+};
+
+export const buildStorefrontLoginRedirect = (path: string): string => {
+  return `/login?redirect=${encodeURIComponent(path)}`;
+};
+
+export const buildAdminLoginRedirect = (path: string): string => {
   return `/auth/login?redirect=${encodeURIComponent(path)}`;
 };
 
@@ -65,12 +111,16 @@ export const resolveUnauthorizedDestination = ({
       return "/";
     }
 
-    return buildAuthLoginRedirect(currentPath);
+    return buildAdminLoginRedirect(currentPath);
   }
 
   if (isCustomerApiPath(requestUrl)) {
-    return buildAuthLoginRedirect(currentPath);
+    if (sessionRole === "admin") {
+      return "/";
+    }
+
+    return buildStorefrontLoginRedirect(currentPath);
   }
 
-  return buildAuthLoginRedirect(currentPath);
+  return buildStorefrontLoginRedirect(currentPath);
 };

@@ -102,7 +102,7 @@ export const ActiveFilters = () => {
           key={tag.id}
           type="button"
           onClick={tag.onRemove}
-          className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
+          className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition-colors duration-300 hover:border-blue-300 hover:bg-blue-100"
         >
           {tag.label}
           <X className="h-3.5 w-3.5" />

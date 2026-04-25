@@ -64,7 +64,7 @@ export function TradeInFulfillmentNotice({
 
   return (
     <section className="mt-5 rounded-[24px] border border-amber-200 bg-amber-50/90 p-4 sm:p-5">
-      <div className="flex items-start gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
         <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-amber-700 shadow-sm">
           <AlertTriangle className="h-5 w-5" />
         </span>
@@ -160,7 +160,7 @@ export function TradeInFulfillmentNotice({
                   <Button
                     type="submit"
                     disabled={submitting || (fulfillmentMethod === "pengiriman" && trackingNumber.trim() === "")}
-                    className="h-11 rounded-xl bg-amber-500 px-5 text-sm font-semibold text-white hover:bg-amber-600"
+                    className="h-11 w-full rounded-xl bg-amber-500 px-5 text-sm font-semibold text-white hover:bg-amber-600 sm:w-auto"
                   >
                     {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                     {buttonLabel}

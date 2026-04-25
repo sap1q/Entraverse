@@ -8,6 +8,7 @@ use App\Events\ProductSyncedToJurnal;
 use App\Models\Product;
 use App\Services\Mekari\Exceptions\MekariApiException;
 use App\Services\Mekari\MekariService;
+use App\Support\SharedInventory;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -435,6 +436,51 @@ class JurnalProductService
         return null;
     }
 
+    /**
+     * @param  array<string, mixed>  $remote
+     */
+    protected function resolveImportedQuantity(array $remote): int
+    {
+        $resolved = $this->resolveNumericValue(
+            Arr::get($remote, 'quantity_available'),
+            Arr::get($remote, 'available_qty'),
+            Arr::get($remote, 'available_quantity'),
+            Arr::get($remote, 'qty_available'),
+            Arr::get($remote, 'quantity'),
+            Arr::get($remote, 'qty')
+        );
+
+        return max(0, (int) ($resolved ?? 0));
+    }
+
+    /**
+     * @param  array<string, mixed>  $remote
+     */
+    protected function resolveImportedSellPrice(array $remote): float
+    {
+        return max(0, (float) ($this->resolveNumericValue(
+            Arr::get($remote, 'sell_price_per_unit'),
+            Arr::get($remote, 'unit_sell_price'),
+            Arr::get($remote, 'sell_price'),
+            Arr::get($remote, 'price')
+        ) ?? 0));
+    }
+
+    /**
+     * @param  array<string, mixed>  $remote
+     */
+    protected function resolveImportedBuyPrice(array $remote): float
+    {
+        return max(0, (float) ($this->resolveNumericValue(
+            Arr::get($remote, 'buy_price_per_unit'),
+            Arr::get($remote, 'unit_buy_price'),
+            Arr::get($remote, 'buy_price'),
+            Arr::get($remote, 'purchase_price'),
+            Arr::get($remote, 'cost_per_unit'),
+            Arr::get($remote, 'cost')
+        ) ?? 0));
+    }
+
     protected function jurnalBasePath(): string
     {
         return rtrim((string) config('services.mekari.jurnal_base_path', '/public/jurnal/api/v1'), '/');
@@ -473,6 +519,8 @@ class JurnalProductService
             throw new \RuntimeException('Missing Jurnal product ID.');
         }
 
+        $remote = $this->enrichRemoteProductForImport($remote, $jurnalId);
+
         $spuCandidate = trim((string) (Arr::get($remote, 'product_code') ?: Arr::get($remote, 'custom_id') ?: ''));
         $name = trim((string) Arr::get($remote, 'name', ''));
         $categoryName = trim((string) (Arr::get($remote, 'product_categories.0.name')
@@ -493,27 +541,27 @@ class JurnalProductService
         $product ??= new Product();
 
         $normalizedSpu = $this->resolveImportedSpu($product, $spuCandidate, $jurnalId);
-        $quantity = (int) Arr::get($remote, 'quantity_available', Arr::get($remote, 'quantity', 0));
-        $sellPrice = (float) Arr::get($remote, 'sell_price_per_unit', 0);
-        $buyPrice = (float) Arr::get($remote, 'buy_price_per_unit', 0);
+        $quantity = $this->resolveImportedQuantity($remote);
+        $sellPrice = $this->resolveImportedSellPrice($remote);
+        $buyPrice = $this->resolveImportedBuyPrice($remote);
         $weight = (int) Arr::get($remote, 'weight', 0);
         $isArchived = (bool) Arr::get($remote, 'archive', false);
         $isActive = (bool) Arr::get($remote, 'active', true);
         $productStatus = ($isArchived || ! $isActive) ? 'inactive' : 'active';
         $safeName = $name !== '' ? $name : "Jurnal Product {$jurnalId}";
         $safeCategory = $categoryName !== '' ? $categoryName : 'Uncategorized';
+        $resolvedBarcode = $this->resolveRemoteBarcode($remote);
+        $existingBarcode = trim((string) ($product->barcode ?? ''));
+        $existingMetadataBarcode = trim((string) data_get($product->jurnal_metadata, 'product.barcode', ''));
+        $barcode = $resolvedBarcode !== ''
+            ? $resolvedBarcode
+            : ($existingBarcode !== '' ? $existingBarcode : $existingMetadataBarcode);
 
         $existingInventory = is_array($product->inventory) ? $product->inventory : [];
         $existingJurnalMetadata = is_array($product->jurnal_metadata) ? $product->jurnal_metadata : [];
         $preserveLocalMarketplaceState = $this->shouldPreserveLocalMarketplaceState($product);
-        $imageUrl = $this->resolveRemoteImageUrl($remote);
-        $photos = $imageUrl !== ''
-            ? [[
-                'url' => $imageUrl,
-                'alt' => $safeName,
-                'is_primary' => true,
-            ]]
-            : (is_array($product->photos) ? $product->photos : []);
+        $preserveLocalPhotoState = $this->shouldPreserveLocalPhotoState($product);
+        $photos = $this->resolveImportedPhotos($product, $remote, $safeName, $preserveLocalPhotoState);
 
         $variantPricing = $this->resolveImportedVariantPricing(
             $product,
@@ -541,6 +589,7 @@ class JurnalProductService
                 'quantity_available' => $quantity,
                 'weight' => $weight,
                 'preserved_local_marketplace_state' => $preserveLocalMarketplaceState,
+                'preserved_local_photo_state' => $preserveLocalPhotoState,
             ],
         ];
 
@@ -549,7 +598,8 @@ class JurnalProductService
             'category' => $safeCategory,
             'description' => (string) Arr::get($remote, 'description', ''),
             'spu' => $normalizedSpu,
-            'stock' => $preserveLocalMarketplaceState ? (int) ($product->stock ?? $quantity) : $quantity,
+            'barcode' => $barcode !== '' ? $barcode : null,
+            'stock' => $quantity,
             'inventory' => $inventory,
             'photos' => $photos,
             'variants' => $this->normalizeVariantsWithDefaults($product->variants),
@@ -606,6 +656,84 @@ class JurnalProductService
         return false;
     }
 
+    private function shouldPreserveLocalPhotoState(Product $product): bool
+    {
+        $jurnalMetadata = is_array($product->jurnal_metadata) ? $product->jurnal_metadata : [];
+        $localMediaState = is_array($jurnalMetadata['local_media_state'] ?? null)
+            ? $jurnalMetadata['local_media_state']
+            : [];
+
+        if ((bool) ($localMediaState['locked'] ?? false)) {
+            return true;
+        }
+
+        $photos = is_array($product->photos) ? $product->photos : [];
+        if (count($photos) > 1) {
+            return true;
+        }
+
+        foreach ($photos as $photo) {
+            $url = is_array($photo)
+                ? trim((string) ($photo['url'] ?? ''))
+                : trim((string) $photo);
+
+            if ($url === '') {
+                continue;
+            }
+
+            if (
+                str_contains($url, '/storage/products/')
+                || str_starts_with(ltrim($url, '/'), 'storage/products/')
+                || str_starts_with(ltrim($url, '/'), 'products/')
+                || str_contains($url, '/api/v1/products/image/products/')
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $remote
+     * @return array<string, mixed>
+     */
+    private function enrichRemoteProductForImport(array $remote, string $jurnalId): array
+    {
+        $hasRemoteImage = $this->resolveRemoteImageUrls($remote) !== [];
+        $hasRemoteBarcode = $this->resolveRemoteBarcode($remote) !== '';
+
+        if ($hasRemoteImage && $hasRemoteBarcode) {
+            return $remote;
+        }
+
+        try {
+            $response = $this->mekari->request('GET', "{$this->jurnalBasePath()}/products/{$jurnalId}");
+            $detail = Arr::get($response, 'product');
+
+            if (! is_array($detail)) {
+                $detail = Arr::get($response, 'data.product');
+            }
+
+            if (! is_array($detail)) {
+                $detail = Arr::get($response, 'data');
+            }
+
+            if (! is_array($detail)) {
+                return $remote;
+            }
+
+            return array_replace_recursive($remote, $detail);
+        } catch (Throwable $exception) {
+            Log::info('Failed fetching Jurnal product detail for import fallback.', [
+                'jurnal_id' => $jurnalId,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return $remote;
+        }
+    }
+
     private function resolveImportedVariantPricing(
         Product $product,
         string $normalizedSpu,
@@ -619,7 +747,13 @@ class JurnalProductService
             : [];
 
         if ($preserveLocalMarketplaceState && $existingVariantPricing !== []) {
-            return $existingVariantPricing;
+            return $this->mergeImportedVariantPricingWithLocalState(
+                $existingVariantPricing,
+                $normalizedSpu,
+                $quantity,
+                $sellPrice,
+                $buyPrice
+            );
         }
 
         return [[
@@ -637,6 +771,64 @@ class JurnalProductService
         ]];
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $existingVariantPricing
+     * @return array<int, array<string, mixed>>
+     */
+    private function mergeImportedVariantPricingWithLocalState(
+        array $existingVariantPricing,
+        string $normalizedSpu,
+        int $quantity,
+        float $sellPrice,
+        float $buyPrice
+    ): array {
+        if ($existingVariantPricing === []) {
+            return [];
+        }
+
+        $groupKeys = array_values(array_unique(array_map(
+            static fn (array $variant): string => SharedInventory::groupKeyForVariant($variant),
+            $existingVariantPricing
+        )));
+
+        $canSyncSharedStock = count($groupKeys) === 1;
+        $warehouse = trim((string) ($existingVariantPricing[0]['warehouse'] ?? 'Gudang Utama'));
+        if ($warehouse === '') {
+            $warehouse = 'Gudang Utama';
+        }
+
+        return array_map(function (array $variant, int $index) use (
+            $normalizedSpu,
+            $quantity,
+            $sellPrice,
+            $buyPrice,
+            $warehouse,
+            $canSyncSharedStock
+        ): array {
+            $nextVariant = [
+                ...$variant,
+                'sku' => trim((string) ($variant['sku'] ?? '')) !== '' ? (string) $variant['sku'] : ($index === 0 ? $normalizedSpu : "{$normalizedSpu}-".($index + 1)),
+                'label' => trim((string) ($variant['label'] ?? '')) !== '' ? (string) $variant['label'] : 'Default',
+                'purchase_price' => $buyPrice,
+                'purchase_price_idr' => $buyPrice,
+            ];
+
+            if (! $canSyncSharedStock) {
+                return $nextVariant;
+            }
+
+            return [
+                ...$nextVariant,
+                'stock' => $quantity,
+                'warehouse' => $warehouse,
+                'warehouse_stock' => [
+                    $warehouse => $quantity,
+                ],
+                'offline_price' => $sellPrice,
+            ];
+        }, $existingVariantPricing, array_keys($existingVariantPricing));
+    }
+
     private function resolveImportedInventory(
         array $existingInventory,
         float $sellPrice,
@@ -650,6 +842,8 @@ class JurnalProductService
         if ($preserveLocalMarketplaceState) {
             return [
                 ...$existingInventory,
+                'cost' => $buyPrice,
+                'total_stock' => $quantity,
                 'jurnal_price' => $sellPrice,
                 'jurnal_cost' => $buyPrice,
                 'jurnal_total_stock' => $quantity,
@@ -734,6 +928,15 @@ class JurnalProductService
 
     protected function resolveRemoteImageUrl(array $remote): string
     {
+        return $this->resolveRemoteImageUrls($remote)[0] ?? '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $remote
+     * @return array<int, string>
+     */
+    protected function resolveRemoteImageUrls(array $remote): array
+    {
         $candidates = [
             Arr::get($remote, 'image.url'),
             Arr::get($remote, 'image'),
@@ -744,22 +947,188 @@ class JurnalProductService
             Arr::get($remote, 'images.0.url'),
             Arr::get($remote, 'images.0.original_url'),
             Arr::get($remote, 'images.0'),
+            Arr::get($remote, 'images'),
             Arr::get($remote, 'pictures.0.url'),
             Arr::get($remote, 'pictures.0'),
+            Arr::get($remote, 'pictures'),
             Arr::get($remote, 'thumbnail.url'),
             Arr::get($remote, 'thumbnail'),
             Arr::get($remote, 'product_image'),
             Arr::get($remote, 'photo_url'),
+            Arr::get($remote, 'attachments'),
+            Arr::get($remote, 'media'),
+        ];
+
+        $urls = [];
+
+        foreach ($candidates as $candidate) {
+            if (is_array($candidate)) {
+                foreach ($candidate as $item) {
+                    $normalized = $this->normalizeRemoteImageUrl(
+                        is_array($item) ? ($item['url'] ?? $item['original_url'] ?? $item['src'] ?? $item['image'] ?? null) : $item
+                    );
+
+                    if ($normalized !== '') {
+                        $urls[] = $normalized;
+                    }
+                }
+
+                continue;
+            }
+
+            $normalized = $this->normalizeRemoteImageUrl($candidate);
+            if ($normalized !== '') {
+                $urls[] = $normalized;
+            }
+        }
+
+        return array_values(array_unique($urls));
+    }
+
+    /**
+     * @param  array<string, mixed>  $remote
+     */
+    protected function resolveRemoteBarcode(array $remote): string
+    {
+        $candidates = [
+            Arr::get($remote, 'barcode'),
+            Arr::get($remote, 'barcode_no'),
+            Arr::get($remote, 'barcode_number'),
+            Arr::get($remote, 'barcode_value'),
+            Arr::get($remote, 'ean'),
+            Arr::get($remote, 'upc'),
+            Arr::get($remote, 'sku_barcode'),
+            Arr::get($remote, 'product.barcode'),
+            Arr::get($remote, 'data.barcode'),
         ];
 
         foreach ($candidates as $candidate) {
-            $normalized = $this->normalizeRemoteImageUrl($candidate);
-            if ($normalized !== '') {
-                return $normalized;
+            if (! is_scalar($candidate)) {
+                continue;
+            }
+
+            $value = trim((string) $candidate);
+            if ($value !== '') {
+                return $value;
             }
         }
 
         return '';
+    }
+
+    private function resolveImportedPhotos(
+        Product $product,
+        array $remote,
+        string $safeName,
+        bool $preserveLocalPhotoState
+    ): array {
+        $existingPhotos = $this->normalizeProductPhotos($product->photos);
+        $remotePhotos = collect($this->resolveRemoteImageUrls($remote))
+            ->map(fn (string $url): array => [
+                'url' => $url,
+                'alt' => $safeName,
+                'is_primary' => false,
+            ])
+            ->all();
+
+        if ($remotePhotos === []) {
+            return $this->finalizeImportedPhotos($existingPhotos);
+        }
+
+        $merged = $preserveLocalPhotoState
+            ? [...$existingPhotos, ...$remotePhotos]
+            : [...$remotePhotos, ...$existingPhotos];
+
+        return $this->finalizeImportedPhotos($merged);
+    }
+
+    /**
+     * @param  mixed  $value
+     * @return array<int, array{url: string, alt: string|null, is_primary: bool}>
+     */
+    private function normalizeProductPhotos(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $photos = [];
+
+        foreach ($value as $photo) {
+            if (is_string($photo)) {
+                $url = trim($photo);
+                if ($url === '') {
+                    continue;
+                }
+
+                $photos[] = [
+                    'url' => $url,
+                    'alt' => null,
+                    'is_primary' => false,
+                ];
+
+                continue;
+            }
+
+            if (! is_array($photo)) {
+                continue;
+            }
+
+            $url = trim((string) ($photo['url'] ?? ''));
+            if ($url === '') {
+                continue;
+            }
+
+            $photos[] = [
+                'url' => $url,
+                'alt' => is_string($photo['alt'] ?? null) ? $photo['alt'] : null,
+                'is_primary' => (bool) ($photo['is_primary'] ?? false),
+            ];
+        }
+
+        return $photos;
+    }
+
+    /**
+     * @param  array<int, array{url: string, alt: string|null, is_primary: bool}>  $photos
+     * @return array<int, array{url: string, alt: string|null, is_primary: bool}>
+     */
+    private function finalizeImportedPhotos(array $photos): array
+    {
+        $result = [];
+        $seen = [];
+
+        foreach ($photos as $photo) {
+            $url = trim((string) ($photo['url'] ?? ''));
+            if ($url === '') {
+                continue;
+            }
+
+            $dedupeKey = strtolower($url);
+            if (isset($seen[$dedupeKey])) {
+                continue;
+            }
+
+            $seen[$dedupeKey] = true;
+            $result[] = [
+                'url' => $url,
+                'alt' => is_string($photo['alt'] ?? null) ? $photo['alt'] : null,
+                'is_primary' => false,
+            ];
+
+            if (count($result) >= 5) {
+                break;
+            }
+        }
+
+        return array_values(array_map(
+            fn (array $photo, int $index): array => [
+                ...$photo,
+                'is_primary' => $index === 0,
+            ],
+            $result,
+            array_keys($result)
+        ));
     }
 
     protected function normalizeRemoteImageUrl(mixed $value): string

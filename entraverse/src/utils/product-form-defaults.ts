@@ -1,4 +1,5 @@
 import type { MatrixPricing, ProductFormState } from "@/src/types/product";
+import { createClientId } from "@/lib/client-id";
 
 export const INPUT_BASE_CLASS =
   "w-full rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:bg-white";
@@ -49,6 +50,6 @@ export const createInitialProductForm = (): ProductFormState => ({
   inventoryPlan: { weight: 0, length: 0, width: 0, height: 0, volume: 0 },
   tradeIn: false,
   photos: Array.from({ length: MAX_PHOTOS }, () => ({ file: null, preview: "" })),
-  variants: [{ id: crypto.randomUUID(), name: "Garansi", options: ["Tanpa Garansi"], draftOption: "" }],
+  variants: [{ id: createClientId("variant"), name: "Garansi", options: ["Tanpa Garansi"], draftOption: "" }],
   matrix: {},
 });

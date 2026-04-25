@@ -16,10 +16,11 @@ const getDiscountPercent = (totalPrice: number, discount: number): number => {
 interface CartSummaryProps {
   summary: CartSummaryValue;
   disabled?: boolean;
+  disabledReason?: string | null;
   onCheckout: () => void;
 }
 
-export function CartSummary({ summary, disabled = false, onCheckout }: CartSummaryProps) {
+export function CartSummary({ summary, disabled = false, disabledReason = null, onCheckout }: CartSummaryProps) {
   const discountPercent = getDiscountPercent(summary.totalPrice, summary.tradeInDiscount);
 
   return (
@@ -64,6 +65,8 @@ export function CartSummary({ summary, disabled = false, onCheckout }: CartSumma
       >
         Lanjut ke Checkout
       </button>
+
+      {disabledReason ? <p className="mt-3 text-xs font-medium text-amber-700">{disabledReason}</p> : null}
 
       <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-xs text-slate-600">
         <div className="flex items-start gap-2">

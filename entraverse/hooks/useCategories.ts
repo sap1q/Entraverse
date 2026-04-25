@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AxiosError } from "axios";
 import { categoryApi } from "@/lib/api/category";
-import { getAuthToken } from "@/lib/axios";
+import { getSessionRole } from "@/src/lib/auth/access";
 import type {
   Category,
   CategoryFees,
@@ -371,8 +371,7 @@ export function useCategoryForm(args?: { id?: string; initialCategory?: Category
     setIsSubmitting(true);
     setError(null);
 
-    const token = getAuthToken();
-    if (!token) {
+    if (getSessionRole() !== "admin") {
       setIsSubmitting(false);
       setError("Sesi login tidak ditemukan. Silakan login ulang.");
       return { ok: false as const, unauthorized: true as const };

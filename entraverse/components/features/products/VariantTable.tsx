@@ -533,14 +533,13 @@ export default function VariantTable({
 
   const handleApplyShippingRate = () => {
     const normalizedRate = Math.max(0, Number(shippingRateInput) || 0);
-    setShippingRates((prev) => {
-      const next = {
-        ...prev,
-        [shippingMethod]: normalizedRate,
-      };
-      onShippingRatesChange(next);
-      return next;
-    });
+    const nextRates = {
+      ...shippingRates,
+      [shippingMethod]: normalizedRate,
+    };
+
+    setShippingRates(nextRates);
+    onShippingRatesChange(nextRates);
   };
 
   const handleResetShippingRates = () => {

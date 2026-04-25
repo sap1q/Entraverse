@@ -19,10 +19,13 @@ class AuthResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        $expirationMinutes = config('sanctum.expiration');
+
         return [
             'token' => $this->token,
             'token_type' => 'Bearer',
             'admin' => new AdminResource($this->resource),
+            'expires_in' => is_numeric($expirationMinutes) ? (int) $expirationMinutes * 60 : null,
         ];
     }
 }

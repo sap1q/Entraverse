@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CartShortcut } from "@/src/components/layout/CartShortcut";
+import { MobileProductSidebar } from "@/src/components/layout/MobileProductSidebar";
 import { ProfileShortcut } from "@/src/components/layout/ProfileShortcut";
 import { ProductMegaDropdown } from "@/src/components/layout/ProductMegaDropdown";
 import { StorefrontSearchBar } from "@/src/components/layout/StorefrontSearchBar";
@@ -14,6 +15,7 @@ import { StorefrontSearchBar } from "@/src/components/layout/StorefrontSearchBar
 export function Header() {
   const pathname = usePathname();
   const [isMegaMenuOpen, setIsMegaMenuOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isTouchingTradeInHero, setIsTouchingTradeInHero] = useState(false);
   const headerRef = useRef<HTMLElement | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,13 +110,6 @@ export function Header() {
       : "border border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
   );
 
-  const mobileMenuButtonClassName = cn(
-    "inline-flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300 ml-1 md:ml-2",
-    useOverlayHeader
-      ? "border border-white/15 bg-white/[0.08] text-white shadow-[0_14px_34px_rgba(15,23,42,0.16)] hover:border-white/30 hover:bg-white/[0.16]"
-      : "border border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
-  );
-
   return (
     <header
       ref={headerRef}
@@ -127,7 +122,7 @@ export function Header() {
       )}
     >
       <div className="mx-auto w-full max-w-7xl px-4 md:px-6">
-        <div className="flex h-16 items-center justify-between gap-3 md:h-[72px]">
+        <div className="hidden h-16 items-center justify-between gap-3 md:h-[72px] lg:flex">
           {/* Logo dengan margin kanan untuk memberi jarak */}
           <Link href="/" className="flex min-w-fit items-center mr-4 md:mr-6 lg:mr-8">
             <Image
@@ -170,19 +165,45 @@ export function Header() {
           </div>
         </div>
 
-        <div className="pb-3 lg:hidden">
-          <div className="flex items-center gap-2">
-            <Link
-              href="/products"
-              className={mobileMenuButtonClassName}
-              aria-label="Buka kategori produk"
-            >
-              <Menu className="h-5 w-5" strokeWidth={1.8} />
-            </Link>
+        <div className="flex min-w-0 h-16 items-center gap-2.5 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(true)}
+            className={cn(
+              "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all duration-300",
+              useOverlayHeader
+                ? "border border-white/15 bg-white/[0.08] text-white shadow-[0_14px_34px_rgba(15,23,42,0.16)] hover:border-white/30 hover:bg-white/[0.16]"
+                : "border border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600"
+            )}
+            aria-label="Buka kategori produk"
+          >
+            <Menu className="h-4.5 w-4.5" strokeWidth={1.8} />
+          </button>
 
+          <Link href="/" className="flex shrink-0 items-center pr-0.5">
+            <Image
+              src="/assets/images/hero/e-logo.png"
+              alt="Entraverse"
+              width={78}
+              height={24}
+              className="h-5 w-auto"
+              priority
+            />
+          </Link>
+
+          <div className="min-w-0 flex-1">
             <Suspense fallback={null}>
-              <StorefrontSearchBar compact variant={useOverlayHeader ? "overlay" : "default"} />
+              <StorefrontSearchBar
+                compact
+                showAddressShortcut={false}
+                variant={useOverlayHeader ? "overlay" : "default"}
+              />
             </Suspense>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1.5">
+            <CartShortcut variant={useOverlayHeader ? "overlay" : "default"} size="compact" />
+            <ProfileShortcut variant={useOverlayHeader ? "overlay" : "default"} size="compact" />
           </div>
         </div>
       </div>
@@ -192,6 +213,12 @@ export function Header() {
         onMouseEnter={openMegaMenu}
         onMouseLeave={scheduleCloseMegaMenu}
         onClose={closeMegaMenu}
+      />
+
+      <MobileProductSidebar
+        open={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
+        overlay={useOverlayHeader}
       />
     </header>
   );

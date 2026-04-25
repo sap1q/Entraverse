@@ -19,8 +19,8 @@ export const ProductHero = ({ product, selectedPrice, selectedVariants, onVarian
   );
 
   return (
-    <section className="rounded-3xl border border-transparent bg-white p-4 sm:p-6">
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+    <section className="min-w-0 overflow-x-hidden rounded-3xl border border-transparent bg-white p-4 sm:p-6">
+      <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
         <Gallery>
           <GalleryThumbnailList images={images} activeIndex={activeIndex} onSelect={setActiveIndex} productName={product.name} />
           <GalleryMainImage

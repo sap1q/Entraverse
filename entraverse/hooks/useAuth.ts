@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AxiosError } from "axios";
 import { authApi } from "@/lib/api/auth";
-import { clearPersistedAuth, persistAuthToken } from "@/lib/axios";
+import { clearPersistedAuth } from "@/lib/axios";
+import { getSessionRole } from "@/src/lib/auth/access";
 import { TokenService } from "@/src/lib/auth/tokens";
 import type { Admin, LoginCredentials, RegisterData } from "@/types/auth.types";
 
@@ -38,7 +39,7 @@ export function useAuth() {
     return {
       ...initialState,
       admin: profile ? profile as Admin : null,
-      isAuthenticated: Boolean(profile && TokenService.hasValidToken()),
+      isAuthenticated: Boolean(profile && getSessionRole() === "admin"),
     };
   });
 
@@ -56,11 +57,6 @@ export function useAuth() {
 
   useEffect(() => {
     TokenService.migrateLegacyTokens();
-
-    const token = TokenService.getToken();
-    if (token) {
-      persistAuthToken(token);
-    }
 
     const unsubscribeLogout = TokenService.on("logout", () => {
       setState({ ...initialState });
@@ -139,7 +135,7 @@ export function useAuth() {
   };
 
   const checkAuth = useCallback(async () => {
-    if (!TokenService.hasValidToken()) {
+    if (getSessionRole() !== "admin") {
       setState((prev) => ({ ...prev, admin: null, isAuthenticated: false }));
       return false;
     }
@@ -196,12 +192,7 @@ export function useAuth() {
         remember: credentials.remember,
       });
 
-      persistAuthToken(
-        response.data.token,
-        Boolean(credentials.remember),
-        response.data.expires_in,
-        response.data.refresh_token
-      );
+      TokenService.clearToken();
       TokenService.setUserProfile({
         id: response.data.admin.id,
         email: response.data.admin.email,
@@ -236,29 +227,29 @@ export function useAuth() {
     clearError();
 
     try {
+      const hadAdminSession = getSessionRole() === "admin";
       const response = await authApi.register({
         ...payload,
         email: payload.email.trim().toLowerCase(),
       });
 
-      persistAuthToken(
-        response.data.token,
-        true,
-        response.data.expires_in,
-        response.data.refresh_token
-      );
-      TokenService.setUserProfile({
-        id: response.data.admin.id,
-        email: response.data.admin.email,
-        name: response.data.admin.name,
-        role: response.data.admin.role,
-      });
+      if (!hadAdminSession) {
+        TokenService.clearToken();
+        TokenService.setUserProfile({
+          id: response.data.admin.id,
+          email: response.data.admin.email,
+          name: response.data.admin.name,
+          role: response.data.admin.role,
+        });
 
-      setState((prev) => ({
-        ...prev,
-        admin: response.data.admin,
-        isAuthenticated: true,
-      }));
+        setState((prev) => ({
+          ...prev,
+          admin: response.data.admin,
+          isAuthenticated: true,
+        }));
+      } else {
+        await checkAuth();
+      }
 
       return true;
     } catch (error) {
@@ -268,7 +259,7 @@ export function useAuth() {
     } finally {
       setLoading(false);
     }
-  }, [clearError, validateRegister]);
+  }, [checkAuth, clearError, validateRegister]);
 
   const logout = useCallback(async () => {
     setLoading(true);
@@ -284,7 +275,7 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    if (!state.isAuthenticated && TokenService.hasValidToken()) {
+    if (!state.isAuthenticated && getSessionRole() === "admin") {
       void checkAuth();
     }
   }, [checkAuth, state.isAuthenticated]);

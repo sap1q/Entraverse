@@ -21,6 +21,7 @@ import {
   PRODUCT_MEDIA_MAX_PHOTOS,
   isInvalidPhotoValue,
 } from "@/lib/product-media";
+import { createClientId } from "@/lib/client-id";
 
 const WARRANTY_VARIANT_NAME = "Garansi";
 const DEFAULT_WARRANTY_OPTIONS = ["Tanpa Garansi", "Toko - 1 Tahun"];
@@ -97,7 +98,7 @@ const ensureWarrantyVariant = (variants: VariantDefinition[], options: string[])
 
   if (warrantyIndex < 0) {
     next.unshift({
-      id: crypto.randomUUID(),
+      id: createClientId("variant"),
       name: WARRANTY_VARIANT_NAME,
       options: normalizedOptions,
       draftOption: "",
@@ -350,7 +351,7 @@ export function useProductForm() {
 
   const addVariant = () =>
     setForm((prev) => {
-      const nextVariants = [...prev.variants, { id: crypto.randomUUID(), name: "", options: [], draftOption: "" }];
+      const nextVariants = [...prev.variants, { id: createClientId("variant"), name: "", options: [], draftOption: "" }];
       return {
         ...prev,
         variants: nextVariants,
@@ -466,4 +467,3 @@ export function useProductForm() {
     removeVariantOption,
   };
 }
-

@@ -2,6 +2,7 @@ import Image from "next/image";
 import type { Metadata } from "next";
 import { ArrowRight } from "lucide-react";
 import { TradeInCategoriesSection } from "./components/TradeInCategoriesSection";
+import { TradeInHeroModel } from "./components/TradeInHeroModel";
 import { TradeInLocationSection } from "./components/TradeInLocationSection";
 import { TradeInScrollButton } from "./components/TradeInScrollButton";
 import { TradeInScrollTopButton } from "./components/TradeInScrollTopButton";
@@ -102,19 +103,13 @@ export default function TradeInPage() {
               <div className="absolute inset-x-8 top-6 h-24 rounded-full bg-white/10 blur-3xl" />
               <div className="relative overflow-hidden rounded-[34px] border border-white/18 bg-white/[0.12] p-6 shadow-[0_30px_80px_rgba(15,23,42,0.18)] backdrop-blur-xl">
                 <div className="absolute -right-12 top-6 h-32 w-32 rounded-full bg-white/8 blur-3xl" />
-                <div className="relative flex min-h-[320px] flex-col items-center justify-center">
+                <div className="relative flex min-h-[320px] flex-col items-center justify-center sm:min-h-[360px]">
                   <div className="absolute inset-x-8 bottom-20 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
 
-                  <div className="relative flex h-48 w-48 items-center justify-center rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.28),rgba(255,255,255,0.05)_68%,transparent_72%)]">
-                    <div className="absolute inset-4 rounded-full border border-white/16" />
-                    <Image
-                      src="/assets/images/icons/VR cat.jpeg"
-                      alt="Perangkat trade-in"
-                      width={196}
-                      height={196}
-                      unoptimized
-                      className="h-44 w-44 rounded-[30px] object-cover drop-shadow-[0_24px_40px_rgba(2,6,23,0.45)]"
-                    />
+                  <div className="relative flex w-full items-center justify-center rounded-[28px] bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.24),rgba(255,255,255,0.07)_56%,transparent_76%)] px-2 pb-2 pt-4">
+                    <div className="absolute inset-x-10 top-4 h-10 rounded-full bg-white/10 blur-2xl" />
+                    <div className="absolute inset-4 rounded-[24px] border border-white/12" />
+                    <TradeInHeroModel />
                   </div>
 
                   <p className="mt-8 max-w-sm text-center text-base font-medium leading-7 text-white/84">
@@ -131,11 +126,11 @@ export default function TradeInPage() {
       <div className="h-8 bg-[#f4f5f7] md:h-10" />
 
       <section className="bg-[#2f52d3]">
-        <div className="mx-auto grid w-full max-w-7xl gap-6 px-4 py-4 sm:grid-cols-3 md:px-6">
+        <div className="mx-auto grid w-full max-w-7xl grid-cols-3 gap-0 px-3 py-4 md:px-6">
           {TRADE_IN_HIGHLIGHTS.map((item) => {
             return (
-              <div key={item.title} className="flex items-center justify-center py-1 text-center">
-                <p className="text-sm font-semibold text-white md:text-[15px]">
+              <div key={item.title} className="flex items-center justify-center border-r border-white/18 px-2 py-1 text-center last:border-r-0 md:px-4">
+                <p className="text-[11px] font-semibold leading-tight text-white sm:text-sm md:text-[15px]">
                   {item.title}
                 </p>
               </div>
@@ -154,11 +149,11 @@ export default function TradeInPage() {
             </h2>
           </div>
 
-          <div className="mx-auto mt-12 grid max-w-[542px] gap-[28px] md:grid-cols-2">
+          <div className="mx-auto mt-12 grid max-w-[542px] grid-cols-2 gap-3 sm:gap-4 md:gap-[28px]">
             {TRADE_IN_FEATURES.map((feature) => (
               <article
                 key={feature.title}
-                className="flex min-h-[304px] flex-col items-center rounded-[6px] bg-[#f7f7f7] px-8 pb-10 pt-14 text-center shadow-[0_0_0_1px_rgba(15,23,42,0.025)]"
+                className="flex min-h-[238px] flex-col items-center rounded-[6px] bg-[#f7f7f7] px-4 pb-6 pt-8 text-center shadow-[0_0_0_1px_rgba(15,23,42,0.025)] sm:min-h-[272px] sm:px-6 sm:pb-8 sm:pt-10 md:min-h-[304px] md:px-8 md:pb-10 md:pt-14"
               >
                 <div
                   className="relative"
@@ -175,10 +170,10 @@ export default function TradeInPage() {
                     unoptimized
                   />
                 </div>
-                <h3 className="mt-8 text-[1.2rem] font-semibold leading-none text-[#2a2d36] md:text-[1.35rem]">
+                <h3 className="mt-6 text-[1rem] font-semibold leading-tight text-[#2a2d36] sm:text-[1.1rem] md:mt-8 md:text-[1.35rem]">
                   {feature.title}
                 </h3>
-                <p className="mt-6 max-w-[190px] text-[1rem] leading-[1.35] text-[#191c24]">
+                <p className="mt-4 max-w-[140px] text-[0.85rem] leading-[1.35] text-[#191c24] sm:max-w-[170px] sm:text-[0.92rem] md:mt-6 md:max-w-[190px] md:text-[1rem]">
                   {feature.description}
                 </p>
               </article>

@@ -229,6 +229,27 @@ const resolveSpecifications = (row: JsonRecord): Record<string, string> => {
   return result;
 };
 
+const resolveDimensions = (
+  raw: unknown
+): ProductDetail["dimensions"] | undefined => {
+  const direct = toObject(raw);
+  const inventory = toObject(toObject(raw).inventory);
+  const dimensionsSource =
+    Object.keys(direct.dimensions ? toObject(direct.dimensions) : {}).length > 0
+      ? toObject(direct.dimensions)
+      : toObject(inventory.dimensions_cm);
+
+  if (Object.keys(dimensionsSource).length === 0) return undefined;
+
+  const length = toNumberValue(dimensionsSource.length) ?? 0;
+  const width = toNumberValue(dimensionsSource.width) ?? 0;
+  const height = toNumberValue(dimensionsSource.height) ?? 0;
+
+  if (length <= 0 && width <= 0 && height <= 0) return undefined;
+
+  return { length, width, height };
+};
+
 const resolveGallery = (row: JsonRecord): string[] => {
   const unique = new Set<string>();
 
@@ -370,23 +391,13 @@ const mapProductDetail = (raw: unknown): ProductDetail => {
   const row = toObject(raw);
   const base = mapProduct(row);
 
-  const dimensionsSource = toObject(row.dimensions);
-  const dimensions =
-    Object.keys(dimensionsSource).length > 0
-      ? {
-          length: toNumberValue(dimensionsSource.length) ?? 0,
-          width: toNumberValue(dimensionsSource.width) ?? 0,
-          height: toNumberValue(dimensionsSource.height) ?? 0,
-        }
-      : undefined;
-
   return {
     ...base,
     gallery: resolveGallery(row),
     description: toStringValue(row.description) ?? "",
     specifications: resolveSpecifications(row),
     weight: toNumberValue(row.weight) ?? toNumberValue(toObject(row.inventory).weight) ?? 0,
-    dimensions,
+    dimensions: resolveDimensions(row),
     barcode: toStringValue(row.barcode) ?? undefined,
     sku: toStringValue(row.sku) ?? toStringValue(row.spu) ?? base.slug.toUpperCase(),
     stock_status: resolveStockStatus(row.stock_status, base.stock),
@@ -478,7 +489,7 @@ const extractReviewMeta = (
   };
 };
 
-const findBestSlugMatch = (rows: unknown[], slug: string): JsonRecord | null => {
+const findExactSlugMatch = (rows: unknown[], slug: string): JsonRecord | null => {
   const normalizedSlug = slugify(slug);
   if (!normalizedSlug) return null;
 
@@ -492,6 +503,15 @@ const findBestSlugMatch = (rows: unknown[], slug: string): JsonRecord | null => 
     return rowName ? slugify(rowName) === normalizedSlug : false;
   });
   if (exact) return exact;
+
+  return null;
+};
+
+const findFuzzySlugMatch = (rows: unknown[], slug: string): JsonRecord | null => {
+  const normalizedSlug = slugify(slug);
+  if (!normalizedSlug) return null;
+
+  const mapped = rows.map((row) => toObject(row));
 
   const fuzzy = mapped.find((row) => {
     const rowSlug = toStringValue(row.slug);
@@ -515,7 +535,7 @@ const resolveProductBySlugFromListing = async (slug: string): Promise<JsonRecord
   const fetchRows = async (search?: string): Promise<unknown[]> => {
     const response = await client.get(PRODUCT_ENDPOINTS.list, {
       params: {
-        per_page: 20,
+        per_page: 100,
         apply_visible: 1,
         search,
       },
@@ -527,12 +547,19 @@ const resolveProductBySlugFromListing = async (slug: string): Promise<JsonRecord
 
   const searchSeed = normalizedSlug.replace(/-/g, " ");
   const searchedRows = await fetchRows(searchSeed);
-  const fromSearchRows = findBestSlugMatch(searchedRows, normalizedSlug);
-  if (fromSearchRows) return fromSearchRows;
-
   const fallbackRows = await fetchRows();
-  const fromFallbackRows = findBestSlugMatch(fallbackRows, normalizedSlug);
-  if (fromFallbackRows) return fromFallbackRows;
+
+  const fromSearchExact = findExactSlugMatch(searchedRows, normalizedSlug);
+  if (fromSearchExact) return fromSearchExact;
+
+  const fromFallbackExact = findExactSlugMatch(fallbackRows, normalizedSlug);
+  if (fromFallbackExact) return fromFallbackExact;
+
+  const fromSearchFuzzy = findFuzzySlugMatch(searchedRows, normalizedSlug);
+  if (fromSearchFuzzy) return fromSearchFuzzy;
+
+  const fromFallbackFuzzy = findFuzzySlugMatch(fallbackRows, normalizedSlug);
+  if (fromFallbackFuzzy) return fromFallbackFuzzy;
 
   return null;
 };

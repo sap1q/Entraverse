@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { StorefrontProduct } from "@/lib/api/types";
-import ProductCard from "./ProductCard";
+import BestSellingProductsCarousel from "./BestSellingProductsCarousel";
 
 type ProductsSectionProps = {
   products: StorefrontProduct[];
@@ -13,9 +13,9 @@ export default function ProductsSection({ products, error }: ProductsSectionProp
       <div className="mx-auto w-full max-w-7xl px-4 md:px-6">
         <div className="mb-8 max-w-2xl space-y-2 md:mb-10">
           <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-500">KOLEKSI KAMI</p>
-          <h2 className="text-3xl font-bold tracking-tight text-slate-950 md:text-[2.15rem]">Produk Kami</h2>
+          <h2 className="text-3xl font-bold tracking-tight text-slate-950 md:text-[2.15rem]">Produk Terbaru Kami</h2>
           <p className="text-sm leading-6 text-slate-500 md:text-[15px]">
-            Jelajahi koleksi produk kami untuk kebutuhan gaming, smart device, dan aksesoris.
+            Lihat produk terbaru yang baru ditambahkan untuk kebutuhan gaming, smart device, dan aksesoris.
           </p>
         </div>
 
@@ -31,11 +31,11 @@ export default function ProductsSection({ products, error }: ProductsSectionProp
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-              {products.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
-            </div>
+            <BestSellingProductsCarousel
+              products={products}
+              prevLabel="Produk terbaru sebelumnya"
+              nextLabel="Produk terbaru berikutnya"
+            />
 
             <div className="mt-10 flex justify-center">
               <Link

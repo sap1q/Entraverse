@@ -12,6 +12,8 @@ use Illuminate\Support\Str;
 
 class ProductResource extends JsonResource
 {
+    private const LOCAL_HOSTS = ['localhost', '127.0.0.1', '::1'];
+
     public function toArray(Request $request): array
     {
         $inventory = is_array($this->inventory) ? $this->inventory : [];
@@ -177,6 +179,7 @@ class ProductResource extends JsonResource
             'category_id' => $this->category_id ? (string) $this->category_id : null,
             'description' => $this->description,
             'spu' => $this->spu,
+            'barcode' => $this->barcode,
             'price' => $price,
             'formatted_price' => 'Rp ' . number_format($price, 0, ',', '.'),
             'stock' => $totalStock,
@@ -219,12 +222,29 @@ class ProductResource extends JsonResource
         }
 
         if (Str::startsWith($trimmed, ['http://', 'https://'])) {
-            $parsedPath = parse_url($trimmed, PHP_URL_PATH);
+            $parsedUrl = parse_url($trimmed);
+            $parsedPath = is_array($parsedUrl) ? ($parsedUrl['path'] ?? null) : null;
+            $photoHost = strtolower((string) ($parsedUrl['host'] ?? ''));
+            $appHost = strtolower((string) parse_url((string) config('app.url', ''), PHP_URL_HOST));
+            $isInternalLocalPhoto = in_array($photoHost, self::LOCAL_HOSTS, true);
+            $isLocalAppHost = $appHost !== '' && in_array($appHost, self::LOCAL_HOSTS, true);
+
             if (! is_string($parsedPath) || $parsedPath === '') {
                 return $trimmed;
             }
 
-            $trimmed = $parsedPath;
+            if (
+                $photoHost !== ''
+                && $appHost !== ''
+                && $photoHost !== $appHost
+                && ! $isInternalLocalPhoto
+                && ! $isLocalAppHost
+            ) {
+                return $trimmed;
+            }
+
+            $query = is_array($parsedUrl) && isset($parsedUrl['query']) ? (string) $parsedUrl['query'] : '';
+            $trimmed = $parsedPath . ($query !== '' ? '?' . $query : '');
         }
 
         $normalized = ltrim($trimmed, '/');

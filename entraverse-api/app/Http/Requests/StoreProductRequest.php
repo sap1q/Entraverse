@@ -22,6 +22,7 @@ class StoreProductRequest extends FormRequest
             'category_id' => ['nullable', 'uuid', 'exists:categories,id'],
             'description' => ['nullable', 'string', 'max:5000'],
             'spu' => ['nullable', 'string', 'max:50', new NoHtml],
+            'barcode' => ['nullable', 'string', 'max:100', new NoHtml],
             'trade_in' => ['nullable', 'boolean'],
             'status' => ['nullable', 'in:active,inactive,draft'],
             'is_featured' => ['nullable', 'boolean'],

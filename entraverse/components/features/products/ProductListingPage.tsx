@@ -17,12 +17,25 @@ interface ProductListingPageProps {
 export const ProductListingPage = ({ forcedCategory }: ProductListingPageProps) => {
   return (
     <ProductsProvider forcedCategory={forcedCategory}>
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+      <div className="min-h-screen bg-[linear-gradient(180deg,#f8fbff_0%,#f4f7fc_38%,#ffffff_100%)]">
         <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-          <ProductBreadcrumb />
+          <div className="border-b border-slate-200/80 pb-5">
+            <ProductBreadcrumb />
 
-          <div className="mt-5 lg:hidden">
-            <FilterSidebar mode="mobile" />
+            <div className="mt-5 lg:hidden">
+              <FilterSidebar mode="mobile" />
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+                <ProductViewToggle />
+                <ProductSort />
+              </div>
+
+              <div className="min-w-0">
+                <ActiveFilters />
+              </div>
+            </div>
           </div>
 
           <div className="mt-6 flex gap-6 xl:gap-8">
@@ -31,15 +44,6 @@ export const ProductListingPage = ({ forcedCategory }: ProductListingPageProps) 
             </aside>
 
             <main className="min-w-0 flex-1">
-              <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <ActiveFilters />
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <ProductViewToggle />
-                  <ProductSort />
-                </div>
-              </div>
-
               <Suspense fallback={<ProductGridSkeleton count={10} />}>
                 <ProductGrid />
               </Suspense>

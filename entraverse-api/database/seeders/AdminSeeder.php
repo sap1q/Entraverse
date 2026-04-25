@@ -13,15 +13,22 @@ class AdminSeeder extends Seeder
 {
     public function run(): void
     {
-        $email = 'admin@example.com';
+        $email = trim((string) env('ADMIN_SEED_EMAIL', 'admin@example.com'));
+        $password = (string) env('ADMIN_SEED_PASSWORD', 'password123');
+        $name = trim((string) env('ADMIN_SEED_NAME', 'Entraverse Admin'));
 
-        $admin = Admin::query()->where('email', $email)->first();
+        $admin = Admin::query()
+            ->where('email', $email)
+            ->orWhere('role', 'superadmin')
+            ->orderByRaw("CASE WHEN email = ? THEN 0 ELSE 1 END", [$email])
+            ->first();
 
         if ($admin) {
             $admin->forceFill([
-                'name' => 'Entraverse Admin',
+                'name' => $name,
+                'email' => $email,
                 'role' => 'superadmin',
-                'password' => Hash::make('password123'),
+                'password' => Hash::make($password),
                 'last_login_at' => null,
             ])->save();
 
@@ -31,9 +38,9 @@ class AdminSeeder extends Seeder
 
         Admin::query()->create([
             'id' => (string) Str::uuid(),
-            'name' => 'Entraverse Admin',
+            'name' => $name,
             'email' => $email,
-            'password' => Hash::make('password123'),
+            'password' => Hash::make($password),
             'role' => 'superadmin',
             'last_login_at' => null,
         ]);

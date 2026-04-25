@@ -1,5 +1,10 @@
-import RegisterForm from "@/components/features/auth/RegisterForm";
+import { Suspense } from "react";
+import StorefrontRegisterForm from "@/components/features/storefront-auth/StorefrontRegisterForm";
 
 export default function AdminAuthRegisterPage() {
-  return <RegisterForm />;
+  return (
+    <Suspense fallback={null}>
+      <StorefrontRegisterForm />
+    </Suspense>
+  );
 }

@@ -124,12 +124,25 @@ const mergeClientTradeInMetadata = (items: CartItem[], previousItems: CartItem[]
   return items.map((item) => {
     const previous =
       previousItems.find((candidate) => candidate.id === item.id) ??
+      (item.tradeInTransactionId
+        ? previousItems.find((candidate) => candidate.tradeInTransactionId === item.tradeInTransactionId)
+        : undefined) ??
       previousItems.find((candidate) =>
         matchSameLine(candidate, item.productId, item.variants, {
           tradeInTransactionId: item.tradeInTransactionId,
           tradeInEnabled: item.tradeInEnabled,
         })
-      );
+      ) ??
+      (() => {
+        const sameProductCandidates = previousItems.filter((candidate) => {
+          return (
+            candidate.productId === item.productId &&
+            buildVariantKey(candidate.variants) === buildVariantKey(item.variants)
+          );
+        });
+
+        return sameProductCandidates.length === 1 ? sameProductCandidates[0] : undefined;
+      })();
 
     if (!previous) {
       return item;
@@ -303,6 +316,13 @@ export const useCart = () => {
     const tradeInTransactionNumber = metadata?.tradeInTransactionNumber?.trim() || existing?.tradeInTransactionNumber;
     const tradeInEnabled = Boolean((metadata?.tradeInEnabled ?? existing?.tradeInEnabled ?? false) || tradeInTransactionId);
     const lineKey = buildTradeInLineKey(tradeInTransactionId, tradeInEnabled);
+    const resolvedPrice = Math.max(0, Number(metadata?.price ?? existing?.price ?? 0));
+
+    if (!tradeInEnabled && resolvedPrice <= 0) {
+      const message = "Produk ini belum bisa dibeli karena harga jual masih 0.";
+      setError(message);
+      return { success: false, message };
+    }
 
     const targetQuantity = clampQuantityByStock(
       (existing?.quantity ?? 0) + requestedQuantity,
@@ -321,7 +341,7 @@ export const useCart = () => {
       name: metadata?.name?.trim() || existing?.name || "Produk",
       slug: metadata?.slug || existing?.slug,
       image: metadata?.image || existing?.image || CART_FALLBACK_IMAGE,
-      price: Math.max(0, Number(metadata?.price ?? existing?.price ?? 0)),
+      price: resolvedPrice,
       displayPrice: Math.max(0, Number(metadata?.displayPrice ?? existing?.displayPrice ?? metadata?.price ?? existing?.price ?? 0)),
       variantSku: metadata?.variantSku?.trim() || existing?.variantSku,
       quantity: targetQuantity,

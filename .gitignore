@@ -1,0 +1,3 @@
+cookies*.txt
+**/cookies*.txt
+**/*_cookies.txt

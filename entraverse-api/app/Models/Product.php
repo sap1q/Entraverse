@@ -40,6 +40,7 @@ class Product extends Model
         'jurnal_metadata',
         'last_synced_at',
         'spu',            // Text: Kode unik produk
+        'barcode',        // Text: Barcode produk
         'product_status', // Text: active, pending_approval, inactive
         'status',         // Enum: active, inactive, draft
         'is_featured',    // Boolean: produk unggulan

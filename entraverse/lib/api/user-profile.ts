@@ -4,7 +4,7 @@ import type { ApiResponse } from "@/types/auth.types";
 import type { UserProfile } from "@/lib/api/types/user-profile.types";
 
 const PROFILE_ENDPOINT = "/user";
-const PROFILE_UPDATE_ENDPOINT = "/user/update";
+const PROFILE_UPDATE_ENDPOINT = "/user";
 
 export const userProfileApi = {
   async getProfile(signal?: AbortSignal): Promise<UserProfile> {

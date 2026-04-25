@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import {
   addMockCartItem,
@@ -9,7 +10,6 @@ import {
   toggleMockWishlist,
 } from "@/lib/mock-store-api";
 import {
-  buildAdminSessionUser,
   computeBrandProductCount,
   loadAdminState,
   normalizeStoredProduct,
@@ -19,6 +19,12 @@ import {
   uploadAdminAsset,
   type AdminRole,
 } from "@/lib/server/admin-store";
+import {
+  buildBackendStorefrontApiUrl,
+  createForwardHeaders,
+  readProxyRequestBody,
+  toProxyResponse,
+} from "@/lib/server/storefront-proxy";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +44,59 @@ type MockAdmin = {
   updated_at?: string | null;
 };
 
+const canProxyBackendV1Route = (method: string, path: string[]): boolean => {
+  const [firstSegment = "", secondSegment = "", thirdSegment = ""] = path;
+  const normalizedMethod = method.toUpperCase();
+
+  if (normalizedMethod === "GET") {
+    if (firstSegment === "categories" || firstSegment === "brands" || firstSegment === "rajaongkir") {
+      return true;
+    }
+
+    if (firstSegment === "banners") {
+      return secondSegment === "active" || secondSegment === "image";
+    }
+
+    if (firstSegment === "products") {
+      return thirdSegment !== "reviews";
+    }
+  }
+
+  if (normalizedMethod === "POST" && firstSegment === "warranties" && secondSegment === "lookup") {
+    return true;
+  }
+
+  return false;
+};
+
+const proxyBackendV1Request = async (
+  request: NextRequest,
+  path: string[]
+): Promise<NextResponse | null> => {
+  if (!canProxyBackendV1Route(request.method, path)) {
+    return null;
+  }
+
+  const targetPath = `/v1/${path.join("/")}`;
+  const targetUrl = buildBackendStorefrontApiUrl(targetPath);
+  if (!targetUrl) {
+    return null;
+  }
+
+  const response = await fetch(`${targetUrl}${request.nextUrl.search}`, {
+    method: request.method,
+    headers: createForwardHeaders(request),
+    body: await readProxyRequestBody(request),
+    cache: "no-store",
+  });
+
+  return toProxyResponse(response);
+};
+
 const AUTH_EXPIRES_IN = 60 * 60 * 24 * 7;
+const MOCK_ADMIN_AUTH_ENABLED = process.env.ENABLE_MOCK_ADMIN_AUTH === "true";
+const MOCK_ADMIN_PASSWORD = process.env.MOCK_ADMIN_PASSWORD?.trim() ?? "";
+const MOCK_ADMIN_SIGNING_KEY = process.env.MOCK_ADMIN_SIGNING_KEY?.trim() || MOCK_ADMIN_PASSWORD;
 
 const json = (payload: unknown, init?: ResponseInit) => NextResponse.json(payload, init);
 
@@ -82,6 +140,13 @@ const slugify = (value: string) =>
 const isValidAdminRole = (value: string | null | undefined): value is AdminRole =>
   value === "superadmin" || value === "admin" || value === "staff" || value === "editor";
 
+const isMockAdminAuthAvailable = () => MOCK_ADMIN_AUTH_ENABLED && MOCK_ADMIN_PASSWORD.length > 0;
+
+const getMockAdminRole = (): AdminRole => {
+  const configuredRole = process.env.MOCK_ADMIN_ROLE?.trim().toLowerCase();
+  return isValidAdminRole(configuredRole) ? configuredRole : "superadmin";
+};
+
 const normalizeNameFromEmail = (email: string) =>
   email
     .split("@")[0]
@@ -100,14 +165,7 @@ const createMockAdmin = (params: {
 }): MockAdmin => {
   const normalizedEmail = params.email.trim().toLowerCase();
   const name = params.name?.trim() || normalizeNameFromEmail(normalizedEmail);
-  const inferredRole = normalizedEmail.includes("superadmin")
-    ? "superadmin"
-    : normalizedEmail.includes("staff")
-      ? "staff"
-      : normalizedEmail.includes("editor")
-        ? "editor"
-        : "admin";
-  const role = isValidAdminRole(params.role) ? params.role : inferredRole;
+  const role = isValidAdminRole(params.role) ? params.role : getMockAdminRole();
   const createdAt = params.createdAt ?? "2026-04-01T00:00:00.000Z";
   const now = new Date().toISOString();
 
@@ -122,17 +180,24 @@ const createMockAdmin = (params: {
   };
 };
 
+const signMockAdminPayload = (payload: string) =>
+  createHmac("sha256", MOCK_ADMIN_SIGNING_KEY).update(payload).digest("base64url");
+
 const encodeMockAdminToken = (admin: MockAdmin) =>
-  `mock-admin.${Buffer.from(
-    JSON.stringify({
-      sub: admin.id,
-      name: admin.name,
-      email: admin.email,
-      role: admin.role,
-      created_at: admin.created_at,
-      exp: Date.now() + (AUTH_EXPIRES_IN * 1000),
-    })
-  ).toString("base64url")}`;
+  (() => {
+    const payload = Buffer.from(
+      JSON.stringify({
+        sub: admin.id,
+        name: admin.name,
+        email: admin.email,
+        role: admin.role,
+        created_at: admin.created_at,
+        exp: Date.now() + (AUTH_EXPIRES_IN * 1000),
+      })
+    ).toString("base64url");
+
+    return `mock-admin.${payload}.${signMockAdminPayload(payload)}`;
+  })();
 
 const decodeMockAdminToken = (authorization: string | null): MockAdmin | null => {
   if (!authorization?.startsWith("Bearer ")) {
@@ -144,7 +209,21 @@ const decodeMockAdminToken = (authorization: string | null): MockAdmin | null =>
     return null;
   }
 
-  const encodedPayload = token.slice("mock-admin.".length);
+  const [prefix, encodedPayload, signature] = token.split(".");
+  if (prefix !== "mock-admin" || !encodedPayload || !signature) {
+    return null;
+  }
+
+  const expectedSignature = signMockAdminPayload(encodedPayload);
+  const signatureBuffer = Buffer.from(signature);
+  const expectedSignatureBuffer = Buffer.from(expectedSignature);
+
+  if (
+    signatureBuffer.length !== expectedSignatureBuffer.length ||
+    !timingSafeEqual(signatureBuffer, expectedSignatureBuffer)
+  ) {
+    return null;
+  }
 
   try {
     const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8")) as {
@@ -203,6 +282,16 @@ const unauthorized = () =>
       data: null,
     },
     { status: 401 }
+  );
+
+const mockAdminAuthUnavailable = () =>
+  json(
+    {
+      success: false,
+      message: "Mock admin auth dinonaktifkan. Gunakan backend API Laravel untuk login admin.",
+      data: null,
+    },
+    { status: 403 }
   );
 
 const assertAdminSession = (request: NextRequest) => decodeMockAdminToken(request.headers.get("authorization"));
@@ -332,7 +421,9 @@ const listPublicBrands = async (searchParams: URLSearchParams) => {
   });
 };
 
-const listAdminBrands = async (searchParams: URLSearchParams) => {
+const listAdminBrands = async (request: NextRequest, searchParams: URLSearchParams) => {
+  if (!assertAdminSession(request)) return unauthorized();
+
   const state = await loadAdminState();
   const search = searchParams.get("search")?.trim().toLowerCase() ?? "";
   const page = parseNumber(searchParams.get("page"), 1);
@@ -374,7 +465,9 @@ const listActiveBanners = async () => {
   });
 };
 
-const listAdminBanners = async (searchParams: URLSearchParams) => {
+const listAdminBanners = async (request: NextRequest, searchParams: URLSearchParams) => {
+  if (!assertAdminSession(request)) return unauthorized();
+
   const state = await loadAdminState();
   const withTrashed = parseBoolean(searchParams.get("with_trashed"));
   const onlyTrashed = parseBoolean(searchParams.get("only_trashed"));
@@ -392,7 +485,9 @@ const listAdminBanners = async (searchParams: URLSearchParams) => {
   });
 };
 
-const getAdminBanner = async (id: string) => {
+const getAdminBanner = async (request: NextRequest, id: string) => {
+  if (!assertAdminSession(request)) return unauthorized();
+
   const state = await loadAdminState();
   const banner = state.banners.find((item) => item.id === id);
   if (!banner) {
@@ -401,16 +496,50 @@ const getAdminBanner = async (id: string) => {
   return json({ success: true, data: banner });
 };
 
-const listAdminProducts = async (searchParams: URLSearchParams) => {
+const listAdminProducts = async (request: NextRequest, searchParams: URLSearchParams) => {
+  if (!assertAdminSession(request)) return unauthorized();
+
   const state = await loadAdminState();
   const search = searchParams.get("search")?.trim().toLowerCase() ?? "";
   const status = searchParams.get("status")?.trim().toLowerCase();
+  const brand = searchParams.get("brand")?.trim().toLowerCase();
+  const category = searchParams.get("category")?.trim().toLowerCase();
+  const stockStatus = searchParams.get("stock_status")?.trim().toLowerCase();
+  const featuredOnly = parseBoolean(searchParams.get("featured"));
   const page = parseNumber(searchParams.get("page"), 1);
   const perPage = parseNumber(searchParams.get("per_page"), 25);
 
   const rows = state.products.filter((product) => {
     if (product.deleted_at) return false;
     if (status && status !== "all" && product.product_status !== status) return false;
+    if (brand && brand !== "all") {
+      const brandMatches = [
+        product.brand_id,
+        product.brand,
+        product.brand_ref?.id,
+        product.brand_ref?.name,
+        product.brand_ref?.slug,
+      ]
+        .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        .some((value) => value.trim().toLowerCase() === brand);
+
+      if (!brandMatches) return false;
+    }
+    if (category && category !== "all") {
+      const categoryMatches = [
+        product.category_id,
+        product.category,
+        product.category_ref?.id,
+        product.category_ref?.name,
+        product.category_ref?.slug,
+      ]
+        .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        .some((value) => value.trim().toLowerCase() === category);
+
+      if (!categoryMatches) return false;
+    }
+    if (stockStatus && stockStatus !== "all" && product.stock_status !== stockStatus) return false;
+    if (featuredOnly && !product.is_featured) return false;
     if (!search) return true;
     const haystack = [
       product.name,
@@ -432,7 +561,9 @@ const listAdminProducts = async (searchParams: URLSearchParams) => {
   });
 };
 
-const getAdminProduct = async (id: string) => {
+const getAdminProduct = async (request: NextRequest, id: string) => {
+  if (!assertAdminSession(request)) return unauthorized();
+
   const state = await loadAdminState();
   const product = state.products.find((item) => item.id === id || item.slug === id);
   if (!product) {
@@ -441,7 +572,9 @@ const getAdminProduct = async (id: string) => {
   return json({ success: true, data: product });
 };
 
-const getCategoryStats = async () => {
+const getCategoryStats = async (request: NextRequest) => {
+  if (!assertAdminSession(request)) return unauthorized();
+
   const state = await loadAdminState();
   const categories = state.categories;
   const active = categories.filter((category) => !category.deleted_at);
@@ -906,19 +1039,24 @@ const patchAdminProductStatus = async (request: NextRequest, id: string) => {
 export async function GET(request: NextRequest, context: RouteContext) {
   const { path = [] } = await context.params;
   const searchParams = request.nextUrl.searchParams;
+  const backendResponse = await proxyBackendV1Request(request, path);
+
+  if (backendResponse) {
+    return backendResponse;
+  }
 
   if (path.length === 1 && path[0] === "categories") return listCategoryRows(searchParams);
   if (path.length === 2 && path[0] === "categories") return getCategoryById(path[1]);
   if (path.length === 1 && path[0] === "brands") return listPublicBrands(searchParams);
   if (path.length === 2 && path[0] === "banners" && path[1] === "active") return listActiveBanners();
   if (path.length === 2 && path[0] === "admin" && (path[1] === "profile" || path[1] === "user")) return respondAdminProfile(request);
-  if (path.length === 2 && path[0] === "admin" && path[1] === "banners") return listAdminBanners(searchParams);
-  if (path.length === 3 && path[0] === "admin" && path[1] === "banners") return getAdminBanner(path[2]);
-  if (path.length === 2 && path[0] === "admin" && path[1] === "brands") return listAdminBrands(searchParams);
-  if (path.length === 2 && path[0] === "admin" && path[1] === "products") return listAdminProducts(searchParams);
-  if (path.length === 3 && path[0] === "admin" && path[1] === "products") return getAdminProduct(path[2]);
+  if (path.length === 2 && path[0] === "admin" && path[1] === "banners") return listAdminBanners(request, searchParams);
+  if (path.length === 3 && path[0] === "admin" && path[1] === "banners") return getAdminBanner(request, path[2]);
+  if (path.length === 2 && path[0] === "admin" && path[1] === "brands") return listAdminBrands(request, searchParams);
+  if (path.length === 2 && path[0] === "admin" && path[1] === "products") return listAdminProducts(request, searchParams);
+  if (path.length === 3 && path[0] === "admin" && path[1] === "products") return getAdminProduct(request, path[2]);
   if (path.length === 4 && path[0] === "admin" && path[1] === "categories" && path[2] === "stats" && path[3] === "overview") {
-    return getCategoryStats();
+    return getCategoryStats(request);
   }
 
   if (path.length === 1 && path[0] === "products") {
@@ -959,8 +1097,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const { path = [] } = await context.params;
+  const backendResponse = await proxyBackendV1Request(request, path);
+
+  if (backendResponse) {
+    return backendResponse;
+  }
 
   if (path.length === 2 && path[0] === "admin" && path[1] === "login") {
+    if (!isMockAdminAuthAvailable()) {
+      return mockAdminAuthUnavailable();
+    }
+
     const body = (await request.json().catch(() => ({}))) as {
       email?: string;
       password?: string;
@@ -974,28 +1121,35 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (!password) errors.password = ["Password wajib diisi."];
     else if (password.length < 6) errors.password = ["Password minimal 6 karakter."];
     if (Object.keys(errors).length > 0) return validationError("Data login tidak valid.", errors);
+    if (password !== MOCK_ADMIN_PASSWORD) {
+      return json(
+        {
+          success: false,
+          message: "Email atau password tidak valid.",
+          data: null,
+        },
+        { status: 401 }
+      );
+    }
     return authResponse(createMockAdmin({ email }), "Login berhasil.");
   }
 
   if (path.length === 2 && path[0] === "admin" && path[1] === "register") {
-    const body = (await request.json().catch(() => ({}))) as Record<string, string>;
-    const email = body.email?.trim().toLowerCase() ?? "";
-    const password = body.password ?? "";
-    const confirmation = body.password_confirmation ?? "";
-    const errors: Record<string, string[]> = {};
-    if (!body.name?.trim()) errors.name = ["Nama wajib diisi."];
-    if (!email) errors.email = ["Email wajib diisi."];
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = ["Format email tidak valid."];
-    if (!password) errors.password = ["Password wajib diisi."];
-    else if (password.length < 8) errors.password = ["Password minimal 8 karakter."];
-    if (!confirmation) errors.password_confirmation = ["Konfirmasi password wajib diisi."];
-    else if (confirmation !== password) errors.password_confirmation = ["Konfirmasi password tidak cocok."];
-    if (body.role && !isValidAdminRole(body.role)) errors.role = ["Role admin tidak valid."];
-    if (Object.keys(errors).length > 0) return validationError("Data registrasi tidak valid.", errors);
-    return authResponse(createMockAdmin({ email, name: body.name, role: body.role }), "Registrasi admin berhasil.");
+    return json(
+      {
+        success: false,
+        message: "Registrasi admin mock dinonaktifkan. Gunakan backend API Laravel.",
+        data: null,
+      },
+      { status: 403 }
+    );
   }
 
   if (path.length === 2 && path[0] === "admin" && path[1] === "logout") {
+    if (!isMockAdminAuthAvailable()) {
+      return mockAdminAuthUnavailable();
+    }
+
     return json({ success: true, message: "Logout berhasil.", data: null });
   }
 

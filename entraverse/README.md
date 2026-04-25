@@ -43,12 +43,15 @@ Required setup:
 
 - Set the Vercel project root directory to `entraverse`
 - Keep framework detection as `Next.js`
-- Provide `NEXT_PUBLIC_API_URL` for preview/production if you need API-backed flows
-  Example: `https://api.entraverse.com/api`
+- Provide `NEXT_PUBLIC_API_URL` for local/preview/production if you need API-backed flows
+  Example local: `http://localhost:8000/api`
+  Example production: `https://api.entraverse.com/api`
 
 Notes:
 
 - If `NEXT_PUBLIC_API_URL` is not set in production, the app now falls back to a safe placeholder origin instead of `127.0.0.1`
 - That means the sandbox can still build on Vercel, but API-dependent pages and actions will fail until the backend is reachable publicly
 - The Laravel API in `entraverse-api` is intentionally out of scope for this Vercel sandbox phase
+- Mock admin auth in `app/api/v1/[...path]` is disabled by default and must be explicitly enabled via server env if you really need the sandbox admin flow
+- Admin auth now uses Next.js server routes plus `httpOnly` cookies for the admin session, and browser calls to `/v1/admin/*` are proxied through Next so the bearer token is no longer exposed to client JavaScript
 - For the production API cutover checklist, see `../docs/api-entraverse-migration.md`

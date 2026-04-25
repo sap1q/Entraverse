@@ -167,11 +167,11 @@ function OrderProgress({
   const safeStep = Math.min(Math.max(1, Math.round(currentStep || 1)), stepCount);
 
   return (
-    <div className="mt-5 overflow-x-auto pb-1">
-      <div className="min-w-[640px]">
+    <div className="mt-5 -mx-1 overflow-x-auto px-1 pb-2">
+      <div className="min-w-[720px]">
         <div
-          className="grid gap-2"
-          style={{ gridTemplateColumns: `repeat(${safeStages.length}, minmax(120px, 1fr))` }}
+          className="grid gap-3"
+          style={{ gridTemplateColumns: `repeat(${safeStages.length}, minmax(132px, 1fr))` }}
         >
           {safeStages.map((stage, index) => {
             const isPointActive = stage.step <= safeStep;
@@ -198,13 +198,17 @@ function OrderProgress({
                   ) : null}
 
                   <span
-                    className={`relative z-10 h-3.5 w-3.5 rounded-full border-2 ${
+                    className={`relative z-10 h-4 w-4 rounded-full border-2 ${
                       isPointActive ? "border-blue-600 bg-blue-600" : "border-slate-300 bg-white"
                     }`}
                   />
                 </div>
 
-                <p className={`text-[11px] leading-4 ${isPointActive ? "font-semibold text-blue-700" : "text-slate-500"}`}>
+                <p
+                  className={`px-1 text-[11px] leading-4 ${
+                    isPointActive ? "font-semibold text-blue-700" : "text-slate-500"
+                  }`}
+                >
                   {stage.label}
                 </p>
               </div>
@@ -229,14 +233,14 @@ function OrderDetailModal({
   const headlineAmount = resolveOrderHeadlineAmount(order);
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-900/50 p-0 sm:items-center sm:p-4" onClick={onClose}>
       <div
-        className="max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+        className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-t-[28px] border border-slate-200 bg-white p-4 shadow-xl sm:max-h-[88vh] sm:rounded-2xl sm:p-6"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-xl font-bold text-slate-900">Detail Transaksi</h2>
+            <h2 className="text-lg font-bold text-slate-900 sm:text-xl">Detail Transaksi</h2>
             <p className="mt-1 text-sm text-slate-500">Invoice: {resolveInvoiceNumber(order)}</p>
           </div>
 
@@ -282,7 +286,7 @@ function OrderDetailModal({
         <div className="mt-5 space-y-3">
           {order.items.map((item) => (
             <div key={item.id} className="rounded-xl border border-slate-200 px-4 py-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-semibold text-slate-900">{item.productName}</p>
@@ -305,7 +309,7 @@ function OrderDetailModal({
                     </p>
                   ) : null}
                 </div>
-                <p className="text-sm font-semibold text-slate-900">
+                <p className="text-sm font-semibold text-slate-900 sm:text-right">
                   {isTradeInOrderItem(item)
                     ? formatCurrencyIDR(item.tradeInEstimatedAmount ?? 0)
                     : formatCurrencyIDR(item.lineTotal)}
@@ -751,29 +755,33 @@ export default function TransactionsPage() {
       />
 
       <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
-            {filterTabs.map((filter) => {
-              const key = normalizeFilterKey(filter.key);
-              const isActive = key === activeFilter;
+        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="rounded-[24px] border border-slate-200 bg-slate-50/90 p-2">
+            <div className="grid grid-cols-2 gap-2 sm:inline-flex sm:min-w-max sm:gap-1">
+              {filterTabs.map((filter) => {
+                const key = normalizeFilterKey(filter.key);
+                const isActive = key === activeFilter;
 
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => {
-                    setActiveFilter(key);
-                    setOpenMenuOrderId(null);
-                    setInfo(null);
-                  }}
-                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                    isActive ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:text-slate-800"
-                  }`}
-                >
-                  {filter.label}
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => {
+                      setActiveFilter(key);
+                      setOpenMenuOrderId(null);
+                      setInfo(null);
+                    }}
+                    className={`min-h-[46px] rounded-[18px] px-4 py-2.5 text-center text-sm font-semibold transition sm:min-h-[44px] sm:px-4 sm:py-2 ${
+                      isActive
+                        ? "bg-white text-blue-700 shadow-[0_10px_24px_rgba(15,23,42,0.08)]"
+                        : "text-slate-600 hover:bg-white/70 hover:text-slate-800"
+                    }`}
+                  >
+                    {filter.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <Button
@@ -783,7 +791,7 @@ export default function TransactionsPage() {
             onClick={() => {
               setReloadTick((previous) => previous + 1);
             }}
-            className="h-10 rounded-xl border-slate-300"
+            className="h-11 w-full rounded-[18px] border-slate-300 bg-white sm:h-10 sm:w-auto sm:rounded-xl"
           >
             <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Refresh
@@ -840,7 +848,7 @@ export default function TransactionsPage() {
             return (
               <article
                 key={order.id}
-                className={`relative rounded-2xl border bg-white p-5 shadow-sm ${
+                className={`relative overflow-hidden rounded-[28px] border bg-white p-4 shadow-[0_16px_36px_rgba(15,23,42,0.06)] sm:rounded-2xl sm:p-5 ${
                   order.hasTradeIn ? "pt-8" : ""
                 } ${
                   isHighlighted ? "border-blue-300 shadow-[0_18px_44px_rgba(59,130,246,0.16)]" : "border-slate-200"
@@ -857,25 +865,25 @@ export default function TransactionsPage() {
                   </div>
                 ) : null}
 
-                <header className="grid gap-4 border-b border-slate-200 pb-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]">
-                  <div>
+                <header className="relative grid grid-cols-2 gap-3 border-b border-slate-200 pb-4 pr-14 sm:grid-cols-2 sm:gap-4 sm:pr-0 xl:grid-cols-[1fr_1fr_1fr_1fr_auto]">
+                  <div className="rounded-2xl bg-slate-50 px-3 py-3 sm:rounded-none sm:bg-transparent sm:px-0 sm:py-0">
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Tanggal Transaksi</p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">
                       {order.createdAt ? formatDateID(order.createdAt) : "-"}
                     </p>
                   </div>
 
-                  <div>
+                  <div className="rounded-2xl bg-slate-50 px-3 py-3 sm:rounded-none sm:bg-transparent sm:px-0 sm:py-0">
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">No. Pesanan</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">{order.orderNumber}</p>
+                    <p className="mt-1 break-words text-sm font-semibold text-slate-900">{order.orderNumber}</p>
                   </div>
 
-                  <div>
+                  <div className="rounded-2xl bg-slate-50 px-3 py-3 sm:rounded-none sm:bg-transparent sm:px-0 sm:py-0">
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{headlineLabel}</p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">{formatCurrencyIDR(headlineAmount)}</p>
                   </div>
 
-                  <div>
+                  <div className="rounded-2xl bg-slate-50 px-3 py-3 sm:rounded-none sm:bg-transparent sm:px-0 sm:py-0">
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Status</p>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${statusBadgeClass(order.statusGroup)}`}>
@@ -884,10 +892,13 @@ export default function TransactionsPage() {
                     </div>
                   </div>
 
-                  <div className="relative justify-self-end" data-order-menu-root="true">
+                  <div
+                    className="absolute right-0 top-0 sm:relative sm:col-span-2 sm:flex sm:justify-end xl:col-span-1 xl:justify-self-end"
+                    data-order-menu-root="true"
+                  >
                     <button
                       type="button"
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
                       aria-label={`Buka menu aksi pesanan ${order.orderNumber}`}
                       aria-haspopup="menu"
                       aria-expanded={openMenuOrderId === order.id}
@@ -900,7 +911,7 @@ export default function TransactionsPage() {
 
                     {openMenuOrderId === order.id ? (
                       <div
-                        className="absolute right-0 top-12 z-20 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-[0_16px_40px_rgba(15,23,42,0.18)]"
+                        className="absolute right-0 top-12 z-20 w-[min(78vw,240px)] rounded-2xl border border-slate-200 bg-white p-1.5 shadow-[0_16px_40px_rgba(15,23,42,0.18)] sm:left-auto sm:w-52"
                         role="menu"
                         aria-label={`Aksi untuk pesanan ${order.orderNumber}`}
                       >
@@ -989,45 +1000,45 @@ export default function TransactionsPage() {
                   </div>
                 </header>
 
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="relative h-16 w-16 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-3.5">
+                    <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
                       <Image
                         src={imageSource}
                         alt={primaryItem?.productName ?? "Produk utama pesanan"}
                         fill
-                        sizes="64px"
+                        sizes="72px"
                         className="object-cover"
                       />
                     </div>
 
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1 pt-0.5">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-base font-semibold text-slate-900">
+                        <p className="text-sm font-semibold leading-5 text-slate-900 sm:text-base">
                           {primaryItem?.productName ?? "Produk tidak tersedia"}
                         </p>
                       </div>
-                      <p className="mt-0.5 text-sm text-emerald-700">
+                      <p className="mt-1 text-sm text-emerald-700">
                         Pembayaran: {paymentDetails?.methodLabel ?? order.paymentMethodLabel}
                       </p>
                       {primaryItem && isTradeInOrderItem(primaryItem) ? (
-                        <p className="mt-0.5 text-xs text-emerald-700">
+                        <p className="mt-1 text-xs leading-5 text-emerald-700">
                           Estimasi trade-in: {formatCurrencyIDR(primaryItem.tradeInEstimatedAmount ?? 0)}
                         </p>
                       ) : null}
                       {paymentDetails?.isPending && paymentDetails.expiryTime ? (
-                        <p className="mt-0.5 text-xs text-amber-700">
+                        <p className="mt-1 text-xs leading-5 text-amber-700">
                           Bayar sebelum {formatDateTimeID(paymentDetails.expiryTime)}
                         </p>
                       ) : null}
                       {order.trackingNumber && order.canTrackPackage ? (
-                        <p className="mt-0.5 text-xs text-slate-500">Resi: {order.trackingNumber}</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">Resi: {order.trackingNumber}</p>
                       ) : null}
                     </div>
                   </div>
 
                   {showInlineActions ? (
-                    <div className="flex flex-wrap gap-3">
+                    <div className="grid w-full gap-3 sm:flex sm:w-auto sm:flex-wrap">
                       {canResumePayment ? (
                         <Button
                           type="button"
@@ -1035,7 +1046,7 @@ export default function TransactionsPage() {
                           onClick={() => {
                             void handleResumePayment(order);
                           }}
-                          className="h-10 rounded-xl bg-blue-600 px-4 text-sm font-semibold hover:bg-blue-700"
+                          className="h-10 w-full rounded-xl bg-blue-600 px-4 text-sm font-semibold hover:bg-blue-700 sm:w-auto"
                         >
                           {resumeOrderId === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                           Bayar Sekarang
@@ -1049,7 +1060,7 @@ export default function TransactionsPage() {
                           onClick={() => {
                             openOrderActionSupport(order, "return");
                           }}
-                          className="h-10 rounded-xl border-amber-200 px-4 text-sm font-semibold text-amber-700 hover:bg-amber-50"
+                          className="h-10 w-full rounded-xl border-amber-200 px-4 text-sm font-semibold text-amber-700 hover:bg-amber-50 sm:w-auto"
                         >
                           <RotateCcw className="h-4 w-4" />
                           Ajukan Retur
@@ -1063,7 +1074,7 @@ export default function TransactionsPage() {
                           onClick={() => {
                             void handleConfirmReceived(order);
                           }}
-                          className="h-10 rounded-xl bg-emerald-600 px-4 text-sm font-semibold hover:bg-emerald-700"
+                          className="h-10 w-full rounded-xl bg-emerald-600 px-4 text-sm font-semibold hover:bg-emerald-700 sm:w-auto"
                         >
                           {confirmReceiveOrderId === order.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                           Pesanan Diterima

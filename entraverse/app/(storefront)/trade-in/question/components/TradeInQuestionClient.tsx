@@ -17,6 +17,7 @@ import { useAddress } from "@/hooks/useAddress";
 import { tradeInApi } from "@/lib/api/trade-in";
 import type { UserAddress } from "@/lib/api/types/user-address.types";
 import type { UserProfile } from "@/lib/api/types/user-profile.types";
+import { savePendingTradeInCheckoutDraft } from "@/lib/trade-in-checkout-draft";
 import { userProfileApi } from "@/lib/api/user-profile";
 import { cn } from "@/lib/utils";
 import { formatCurrencyIDR } from "@/lib/utils/formatter";
@@ -505,6 +506,8 @@ export function TradeInQuestionClient({
     setSubmissionError(null);
     setSubmissionInfo(null);
 
+    let hasSavedCheckoutDraft = false;
+
     try {
       const orderedPhotos = TRADE_IN_PHOTO_SLOTS.map((slot) => photos.find((photo) => photo.slotId === slot.id) ?? null)
         .filter((photo): photo is TradeInPhotoItem => photo !== null);
@@ -532,6 +535,28 @@ export function TradeInQuestionClient({
         photos: orderedPhotos.map((photo) => photo.file),
       });
 
+      savePendingTradeInCheckoutDraft({
+        id: `draft:${product.id}:${submission.id}`,
+        productId: product.id,
+        name: product.name,
+        slug: product.slug ?? undefined,
+        image: product.image,
+        price: offlineBasePrice,
+        displayPrice: entraverseDisplayPrice,
+        variantSku: selectedVariantSku ?? undefined,
+        quantity: minOrder,
+        stock,
+        minOrder,
+        selected: true,
+        variants: selectedTradeInVariants,
+        tradeInEnabled: true,
+        tradeInValue: estimate,
+        tradeInUnitValue: estimate / minOrder,
+        tradeInTransactionId: submission.id,
+        tradeInTransactionNumber: submission.transactionNumber,
+      });
+      hasSavedCheckoutDraft = true;
+
       const result = await addToCart(product.id, minOrder, selectedTradeInVariants, {
         name: product.name,
         slug: product.slug,
@@ -548,17 +573,18 @@ export function TradeInQuestionClient({
         tradeInTransactionNumber: submission.transactionNumber,
       });
 
-      if (result.success) {
-        setSubmissionInfo(`Pengajuan trade-in ${submission.transactionNumber} berhasil dikirim.`);
-        router.push("/checkout");
-      } else {
-        setSubmissionError(
-          result.message
-            ? `Pengajuan trade-in sudah tersimpan, tetapi keranjang gagal diperbarui: ${result.message}`
-            : "Pengajuan trade-in sudah tersimpan, tetapi keranjang gagal diperbarui."
-        );
+      if (!result.success) {
+        console.warn("[Trade-In] Keranjang gagal diperbarui, checkout akan memakai draft fallback.", result.message);
       }
+
+      setSubmissionInfo(`Pengajuan trade-in ${submission.transactionNumber} berhasil dikirim.`);
+      router.push("/checkout");
     } catch (error) {
+      if (hasSavedCheckoutDraft) {
+        router.push("/checkout");
+        return;
+      }
+
       setSubmissionError(error instanceof Error ? error.message : "Gagal mengirim pengajuan trade-in.");
     } finally {
       setIsContinuingOrder(false);
@@ -566,7 +592,7 @@ export function TradeInQuestionClient({
   };
 
   return (
-    <div className="bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_32%,#eff6ff_100%)] pb-28 pt-8 lg:pb-12">
+    <div className="bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_32%,#eff6ff_100%)] pb-40 pt-8 lg:pb-12">
       <div className="mx-auto w-full max-w-7xl px-4 md:px-6">
         <div className="max-w-3xl">
           <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-blue-700">
@@ -906,7 +932,6 @@ export function TradeInQuestionClient({
               <TradeInSummaryCard
                 productName={product.name}
                 productImage={product.image}
-                basePrice={offlineBasePrice}
                 variantLabel={selectedVariantLabel}
                 estimate={estimate}
                 loading={isCheckingLimit}
@@ -924,7 +949,6 @@ export function TradeInQuestionClient({
             <TradeInSummaryCard
               productName={product.name}
               productImage={product.image}
-              basePrice={offlineBasePrice}
               variantLabel={selectedVariantLabel}
               estimate={estimate}
               loading={isCheckingLimit}
@@ -940,22 +964,34 @@ export function TradeInQuestionClient({
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:hidden">
-        <div className="mx-auto flex max-w-7xl items-center gap-3">
-          <div className="min-w-0 flex-1">
+        <div className="mx-auto max-w-7xl space-y-3">
+          <div className="min-w-0">
             <p className="text-xs text-slate-500">Estimasi Limit Hingga</p>
             <p className="truncate text-lg font-bold text-slate-950">{formatCurrencyIDR(estimate)}</p>
           </div>
 
-          <Button
-            type="button"
-            onClick={handleCheckLimit}
-            loading={isCheckingLimit}
-            disabled={!hasCompletedForm || isCheckingLimit}
-            variant="outline"
-            className="h-11 rounded-2xl border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-          >
-            Cek Limit
-          </Button>
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              type="button"
+              onClick={handleCheckLimit}
+              loading={isCheckingLimit}
+              disabled={!hasCompletedForm || isCheckingLimit}
+              variant="outline"
+              className="h-11 rounded-2xl border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+            >
+              Cek Limit
+            </Button>
+
+            <Button
+              type="button"
+              onClick={handleContinueOrder}
+              loading={isContinuingOrder}
+              disabled={!canContinue}
+              className="h-11 rounded-2xl bg-blue-600 hover:bg-blue-700"
+            >
+              Lanjut Checkout
+            </Button>
+          </div>
         </div>
       </div>
     </div>

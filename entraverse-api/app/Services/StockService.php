@@ -7,6 +7,7 @@ namespace App\Services;
 use App\Models\Admin;
 use App\Models\Product;
 use App\Models\StockMutation;
+use App\Support\SharedInventory;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +16,7 @@ use Illuminate\Validation\ValidationException;
 class StockService
 {
     private const DEFAULT_WAREHOUSE = 'Gudang Utama';
-    private const LOW_STOCK_THRESHOLD = 10;
+    private const LOW_STOCK_THRESHOLD = 6;
 
     public function listAllInventoryRows(array $filters = []): Collection
     {
@@ -78,6 +79,9 @@ class StockService
             ->slice($offset, $perPage)
             ->values();
 
+        $physicalStockGroups = $searchScoped
+            ->groupBy(fn (array $row): string => $this->resolveStockGroupKey($row));
+
         return [
             'rows' => $paginated->all(),
             'stats' => [
@@ -85,8 +89,16 @@ class StockService
                     ->map(fn (array $row): string => (string) $row['product_id'] . '|' . (string) $row['sku'])
                     ->unique()
                     ->count(),
-                'low_stock_alert' => $searchScoped->filter(fn (array $row): bool => (int) $row['current_stock'] > 0 && (int) $row['current_stock'] < self::LOW_STOCK_THRESHOLD)->count(),
-                'out_of_stock' => $searchScoped->filter(fn (array $row): bool => (int) $row['current_stock'] === 0)->count(),
+                'available_stock' => $physicalStockGroups->sum(
+                    fn (Collection $rows): int => (int) ($rows->first()['available_stock'] ?? 0)
+                ),
+                'low_stock_alert' => $physicalStockGroups->filter(
+                    fn (Collection $rows): bool => (int) ($rows->first()['available_stock'] ?? 0) > 0
+                        && (int) ($rows->first()['available_stock'] ?? 0) < self::LOW_STOCK_THRESHOLD
+                )->count(),
+                'out_of_stock' => $physicalStockGroups->filter(
+                    fn (Collection $rows): bool => (int) ($rows->first()['available_stock'] ?? 0) === 0
+                )->count(),
             ],
             'warehouses' => $allRows
                 ->pluck('warehouse')
@@ -196,14 +208,22 @@ class StockService
             }
 
             $warehouseStock[$targetWarehouse] = $nextWarehouseStock;
-            $variant['sku'] = $targetSku;
-            $variant['warehouse'] = $targetWarehouse;
-            $variant['warehouse_stock'] = $warehouseStock;
-            $variant['stock'] = (int) collect($warehouseStock)->sum();
-            $variant['updated_at'] = now()->toISOString();
-            $variantRows[$targetIndex] = $variant;
+            $targetGroupKey = (string) ($variant['shared_inventory_key'] ?? SharedInventory::groupKeyForVariant($variant));
 
-            $totalStock = (int) collect($variantRows)->sum(fn (array $row): int => (int) ($row['stock'] ?? 0));
+            foreach ($variantRows as $index => $row) {
+                $rowGroupKey = (string) ($row['shared_inventory_key'] ?? SharedInventory::groupKeyForVariant($row));
+                if ($rowGroupKey !== $targetGroupKey) {
+                    continue;
+                }
+
+                $row['warehouse'] = $targetWarehouse;
+                $row['warehouse_stock'] = $warehouseStock;
+                $row['stock'] = (int) collect($warehouseStock)->sum();
+                $row['updated_at'] = now()->toISOString();
+                $variantRows[$index] = $row;
+            }
+
+            $totalStock = SharedInventory::totalStockFromRows($variantRows);
             $inventory = is_array($product->inventory) ? $product->inventory : [];
             $inventory['total_stock'] = $totalStock;
 
@@ -283,7 +303,7 @@ class StockService
             ];
         }
 
-        return array_values(array_map(function (array $row, int $index) use ($product): array {
+        $normalizedRows = array_values(array_map(function (array $row, int $index) use ($product): array {
             $normalized = $row;
             $normalized['sku'] = $this->resolveSku($product, $row, $index);
             $normalized['warehouse'] = $this->resolveWarehouse($product, $row);
@@ -299,6 +319,16 @@ class StockService
 
             return $normalized;
         }, $rows, array_keys($rows)));
+
+        $inventory = is_array($product->inventory) ? $product->inventory : [];
+        $fallbackWarehouse = trim((string) ($inventory['warehouse'] ?? ''));
+        $fallbackStock = (int) ($inventory['total_stock'] ?? $product->stock ?? 0);
+
+        return SharedInventory::synchronizeVariantRows(
+            $normalizedRows,
+            $fallbackStock,
+            $fallbackWarehouse !== '' ? $fallbackWarehouse : self::DEFAULT_WAREHOUSE
+        );
     }
 
     /**
@@ -325,9 +355,11 @@ class StockService
             }
 
             $stockValue = (int) $stock;
+            $availableStock = (int) collect($warehouseStock)->sum();
             $rows[] = [
                 'id' => sprintf('%s:%s:%d:%s', (string) $product->id, (string) ($variant['sku'] ?? ''), $index, $warehouseName),
                 'product_id' => (string) $product->id,
+                'shared_inventory_key' => (string) ($variant['shared_inventory_key'] ?? SharedInventory::groupKeyForVariant($variant)),
                 'product_name' => (string) $product->name,
                 'product_spu' => (string) ($product->spu ?? ''),
                 'product_image' => $this->resolveProductImage($product),
@@ -335,7 +367,8 @@ class StockService
                 'variant_name' => (string) ($variant['label'] ?? 'Default'),
                 'warehouse' => $warehouseName,
                 'current_stock' => $stockValue,
-                'variant_total_stock' => (int) collect($warehouseStock)->sum(),
+                'available_stock' => $availableStock,
+                'variant_total_stock' => $availableStock,
                 'status' => $this->resolveStatus($stockValue),
                 'last_update' => $lastUpdate,
             ];
@@ -345,6 +378,7 @@ class StockService
             $rows[] = [
                 'id' => sprintf('%s:%s:%d:%s', (string) $product->id, (string) ($variant['sku'] ?? ''), $index, self::DEFAULT_WAREHOUSE),
                 'product_id' => (string) $product->id,
+                'shared_inventory_key' => (string) ($variant['shared_inventory_key'] ?? SharedInventory::groupKeyForVariant($variant)),
                 'product_name' => (string) $product->name,
                 'product_spu' => (string) ($product->spu ?? ''),
                 'product_image' => $this->resolveProductImage($product),
@@ -352,6 +386,7 @@ class StockService
                 'variant_name' => (string) ($variant['label'] ?? 'Default'),
                 'warehouse' => self::DEFAULT_WAREHOUSE,
                 'current_stock' => 0,
+                'available_stock' => 0,
                 'variant_total_stock' => 0,
                 'status' => $this->resolveStatus(0),
                 'last_update' => $lastUpdate,
@@ -527,5 +562,18 @@ class StockService
         $parts[] = sprintf('Stock %d -> %d', $beforeStock, $afterStock);
 
         return implode(' | ', $parts);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function resolveStockGroupKey(array $row): string
+    {
+        $sharedKey = trim((string) ($row['shared_inventory_key'] ?? ''));
+        if ($sharedKey === '') {
+            $sharedKey = SharedInventory::groupKeyForVariant($row);
+        }
+
+        return (string) ($row['product_id'] ?? '') . '|' . $sharedKey;
     }
 }

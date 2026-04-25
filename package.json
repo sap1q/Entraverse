@@ -1,0 +1,17 @@
+{
+  "name": "entraver-workspace",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "npm --prefix entraverse run dev",
+    "dev:backend": "cd entraverse-api && php artisan serve --host=localhost --port=8000",
+    "install:frontend": "npm --prefix entraverse install",
+    "install:backend": "cd entraverse-api && composer install",
+    "build:frontend": "npm --prefix entraverse run build",
+    "lint:frontend": "npm --prefix entraverse run lint",
+    "test:frontend": "npm --prefix entraverse run test",
+    "migrate:backend": "cd entraverse-api && php artisan migrate",
+    "seed:backend": "cd entraverse-api && php artisan db:seed --class=AdminSeeder",
+    "key:backend": "cd entraverse-api && php artisan key:generate",
+    "setup": "npm run install:frontend && npm run install:backend && npm run key:backend && npm run migrate:backend && npm run seed:backend"
+  }
+}

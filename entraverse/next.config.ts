@@ -1,5 +1,29 @@
 import type { NextConfig } from "next";
 
+type RemotePattern = NonNullable<NonNullable<NextConfig["images"]>["remotePatterns"]>[number];
+
+function resolveRemotePattern(urlString?: string | null): RemotePattern | null {
+  if (!urlString) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(urlString);
+    const protocol: "http" | "https" = parsed.protocol === "https:" ? "https" : "http";
+
+    return {
+      protocol,
+      hostname: parsed.hostname,
+      port: parsed.port,
+      pathname: "/**",
+    };
+  } catch {
+    return null;
+  }
+}
+
+const configuredApiRemotePattern = resolveRemotePattern(process.env.NEXT_PUBLIC_API_URL);
+
 const nextConfig: NextConfig = {
   images: {
     dangerouslyAllowLocalIP: true,
@@ -29,6 +53,12 @@ const nextConfig: NextConfig = {
         pathname: "/**",
       },
       {
+        protocol: "http",
+        hostname: "192.168.1.22",
+        port: "8000",
+        pathname: "/**",
+      },
+      {
         protocol: "https",
         hostname: "*.jurnal.id",
         pathname: "/**",
@@ -38,6 +68,7 @@ const nextConfig: NextConfig = {
         hostname: "api.entraverse.com",
         pathname: "/**",
       },
+      ...(configuredApiRemotePattern ? [configuredApiRemotePattern] : []),
     ],
   },
 };

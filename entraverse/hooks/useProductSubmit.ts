@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import api, { apiUpload, clearPersistedAuth, getAuthToken, isAxiosError } from "@/lib/axios";
+import api, { apiUpload, clearPersistedAuth, isAxiosError } from "@/lib/axios";
 import { useToast } from "@/hooks/useToast";
+import { getSessionRole } from "@/src/lib/auth/access";
 
 type SubmitMode = "create" | "edit";
 
@@ -103,15 +104,14 @@ export function useProductSubmit() {
         console.debug("[Product Submit Start]", {
           mode,
           productId: productId ?? null,
-          hasToken: Boolean(getAuthToken()),
+          isAdminSession: getSessionRole() === "admin",
           apiBaseURL: String(api.defaults.baseURL ?? ""),
           payloadSizeBytes: getPayloadSize(payload),
           payloadKeys: Object.keys(payload),
         });
       }
 
-      const token = getAuthToken();
-      if (!token) {
+      if (getSessionRole() !== "admin") {
         const message = "Sesi telah berakhir. Silakan login kembali.";
         setError(message);
         toast({

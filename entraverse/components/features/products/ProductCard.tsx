@@ -1,12 +1,13 @@
 "use client";
 
 import type { MouseEvent } from "react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Star } from "lucide-react";
 import { WishlistHeartButton } from "@/components/ui/WishlistHeartButton";
 import { useWishlist } from "@/hooks/useWishlist";
+import { resolveApiAssetUrl } from "@/lib/utils/media";
 import { createWishlistSnapshotFromProduct } from "@/lib/wishlist";
 import { cn } from "@/lib/utils";
 import { formatCurrencyIDR } from "@/lib/utils/formatter";
@@ -22,7 +23,10 @@ export const ProductCard = ({ product, view = "grid" }: ProductCardProps) => {
   const wishlistSnapshot = useMemo(() => createWishlistSnapshotFromProduct(product), [product]);
   const isWishlisted = hasHydrated ? isInWishlist(product.id) : Boolean(product.is_wishlisted);
   const wishlistPending = isPending(product.id);
-  const imageSrc = product.image?.trim() ? product.image : "/assets/images/hero/e-hero.png";
+  const resolvedImageSrc = product.image?.trim()
+    ? (resolveApiAssetUrl(product.image) ?? product.image)
+    : "/assets/images/hero/e-hero.png";
+  const [imageSrc, setImageSrc] = useState(resolvedImageSrc);
   const displayRating = Number.isFinite(product.rating) ? product.rating : 0;
   const soldLabel = product.sold_count > 0 ? `${product.sold_count}+ terjual` : "0 terjual";
   const isOutOfStock = product.stock_status === "out_of_stock" || product.stock <= 0;
@@ -32,6 +36,10 @@ export const ProductCard = ({ product, view = "grid" }: ProductCardProps) => {
     if (!product.is_wishlisted || hasHydrated) return;
     seedWishlistItem(wishlistSnapshot);
   }, [hasHydrated, product.is_wishlisted, seedWishlistItem, wishlistSnapshot]);
+
+  useEffect(() => {
+    setImageSrc(resolvedImageSrc);
+  }, [resolvedImageSrc]);
 
   const handleWishlistClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -74,6 +82,11 @@ export const ProductCard = ({ product, view = "grid" }: ProductCardProps) => {
                 src={imageSrc}
                 alt={product.name}
                 fill
+                onError={() => {
+                  if (imageSrc !== "/assets/images/hero/e-hero.png") {
+                    setImageSrc("/assets/images/hero/e-hero.png");
+                  }
+                }}
                 className={cn(
                   "transition-transform duration-500 group-hover:scale-105",
                   isOutOfStock ? "object-cover grayscale opacity-45" : "object-contain"
