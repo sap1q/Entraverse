@@ -101,6 +101,7 @@ export interface ProductFormState {
   inventoryPlan: InventoryPlan;
   tradeIn: boolean;
   photos: PhotoSlot[];
+  variantImages: Record<string, PhotoSlot>;
   variants: VariantDefinition[];
   matrix: Record<string, MatrixPricing>;
 }

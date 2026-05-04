@@ -24,7 +24,7 @@ export default async function StorefrontPage() {
   return (
     <div className="bg-[#f4f5f7]">
       <div className="bg-white">
-        <div className="mx-auto w-full max-w-7xl px-4 pb-10 pt-6 md:px-6 md:pb-14 md:pt-8">
+        <div className="mx-auto w-full max-w-[1180px] px-4 pb-10 pt-6 md:px-6 md:pb-14 md:pt-8">
           <HeroSlider />
         </div>
       </div>

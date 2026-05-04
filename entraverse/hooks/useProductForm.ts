@@ -22,6 +22,7 @@ import {
   isInvalidPhotoValue,
 } from "@/lib/product-media";
 import { createClientId } from "@/lib/client-id";
+import { getSharedVariantImageKey, sortVariantCombinations } from "@/lib/product-variant-order";
 
 const WARRANTY_VARIANT_NAME = "Garansi";
 const DEFAULT_WARRANTY_OPTIONS = ["Tanpa Garansi", "Toko - 1 Tahun"];
@@ -49,14 +50,14 @@ const buildVariantCombinations = (variants: VariantDefinition[]): VariantCombina
     combinations = next;
   });
 
-  return combinations.map((values) => {
+  return sortVariantCombinations(combinations.map((values) => {
     const entries = Object.entries(values);
     return {
       key: entries.map(([name, option]) => `${name}:${option}`).join("|"),
       label: entries.map(([name, option]) => `${name}: ${option}`).join(" / "),
       values,
     };
-  });
+  }));
 };
 
 const syncMatrixWithVariants = (
@@ -125,6 +126,7 @@ const createInitialState = (): ProductFormState => {
   return {
     ...initial,
     photos: normalizedPhotos,
+    variantImages: initial.variantImages ?? {},
     matrix: syncMatrixWithVariants(initial.variants, initial.matrix, initial.inventoryPlan.weight),
   };
 };
@@ -142,6 +144,24 @@ const normalizePhotoSlots = (slots: ProductFormState["photos"]): ProductFormStat
   return compact;
 };
 
+const syncVariantImagesWithCombinations = (
+  combinations: VariantCombination[],
+  previous: ProductFormState["variantImages"]
+): ProductFormState["variantImages"] => {
+  const next: ProductFormState["variantImages"] = {};
+  combinations.forEach((combo) => {
+    const imageKey = getSharedVariantImageKey(combo);
+    if (next[imageKey]) return;
+    next[imageKey] = previous[imageKey] ?? { file: null, preview: "" };
+  });
+  return next;
+};
+
+const syncVariantImagesWithVariants = (
+  variants: VariantDefinition[],
+  previous: ProductFormState["variantImages"]
+): ProductFormState["variantImages"] => syncVariantImagesWithCombinations(buildVariantCombinations(variants), previous);
+
 const toSlug = (value: string): string =>
   value
     .toLowerCase()
@@ -155,6 +175,7 @@ export function useProductForm() {
   const [imageErrors, setImageErrors] = useState<string[]>(
     Array.from({ length: PRODUCT_MEDIA_MAX_PHOTOS }, () => "")
   );
+  const [variantImageErrors, setVariantImageErrors] = useState<Record<string, string>>({});
 
   const variants = form.variants;
   const photos = form.photos;
@@ -169,6 +190,20 @@ export function useProductForm() {
     () => () => photos.forEach((slot) => slot.preview.startsWith("blob:") && URL.revokeObjectURL(slot.preview)),
     [photos]
   );
+
+  const pruneVariantImageErrors = useCallback((variantsToKeep: VariantDefinition[]) => {
+    const allowedKeys = new Set(
+      buildVariantCombinations(variantsToKeep).map((combo) => getSharedVariantImageKey(combo))
+    );
+    setVariantImageErrors((prev) => {
+      const nextEntries = Object.entries(prev).filter(([key]) => allowedKeys.has(key));
+      if (nextEntries.length === Object.keys(prev).length) {
+        return prev;
+      }
+
+      return Object.fromEntries(nextEntries);
+    });
+  }, []);
 
   const handleUpdateBasicInfo = <K extends keyof ProductFormState["basic"]>(
     field: K,
@@ -320,6 +355,35 @@ export function useProductForm() {
     });
   };
 
+  const handleBulkImageChange = (slotIndex: number, files: File[]) => {
+    if (slotIndex < 0 || slotIndex >= PRODUCT_MEDIA_MAX_PHOTOS || files.length === 0) return;
+
+    setForm((prev) => {
+      const nextSlots = [...prev.photos];
+      const nextErrors = [...imageErrors];
+      const maxAssignable = Math.min(files.length, PRODUCT_MEDIA_MAX_PHOTOS - slotIndex);
+
+      for (let offset = 0; offset < maxAssignable; offset += 1) {
+        const targetIndex = slotIndex + offset;
+        const file = files[offset];
+        if (!file) continue;
+
+        if (file.size > PRODUCT_MEDIA_MAX_FILE_SIZE_BYTES) {
+          nextErrors[targetIndex] = "Maksimal ukuran file 2MB.";
+          continue;
+        }
+
+        const currentPreview = nextSlots[targetIndex]?.preview;
+        if (currentPreview?.startsWith("blob:")) URL.revokeObjectURL(currentPreview);
+        nextSlots[targetIndex] = { file, preview: URL.createObjectURL(file) };
+        nextErrors[targetIndex] = "";
+      }
+
+      setImageErrors(nextErrors);
+      return { ...prev, photos: nextSlots };
+    });
+  };
+
   const handleRemoveImage = (slotIndex: number) => {
     if (slotIndex < 0 || slotIndex >= PRODUCT_MEDIA_MAX_PHOTOS) return;
 
@@ -345,6 +409,64 @@ export function useProductForm() {
     });
   };
 
+  const handleVariantImageChange = useCallback((imageKey: string, file: File | null) => {
+    if (!imageKey) return;
+
+    if (!file) {
+      setForm((prev) => {
+        const currentPreview = prev.variantImages?.[imageKey]?.preview;
+        if (currentPreview?.startsWith("blob:")) URL.revokeObjectURL(currentPreview);
+
+        return {
+          ...prev,
+          variantImages: {
+            ...(prev.variantImages ?? {}),
+            [imageKey]: { file: null, preview: "" },
+          },
+        };
+      });
+      setVariantImageErrors((prev) => ({ ...prev, [imageKey]: "" }));
+      return;
+    }
+
+    if (file.size > PRODUCT_MEDIA_MAX_FILE_SIZE_BYTES) {
+      setVariantImageErrors((prev) => ({ ...prev, [imageKey]: "Maksimal ukuran file 2MB." }));
+      return;
+    }
+
+    setForm((prev) => {
+      const currentPreview = prev.variantImages?.[imageKey]?.preview;
+      if (currentPreview?.startsWith("blob:")) URL.revokeObjectURL(currentPreview);
+
+      return {
+        ...prev,
+        variantImages: {
+          ...(prev.variantImages ?? {}),
+          [imageKey]: { file, preview: URL.createObjectURL(file) },
+        },
+      };
+    });
+    setVariantImageErrors((prev) => ({ ...prev, [imageKey]: "" }));
+  }, []);
+
+  const handleRemoveVariantImage = useCallback((imageKey: string) => {
+    if (!imageKey) return;
+
+    setForm((prev) => {
+      const currentPreview = prev.variantImages?.[imageKey]?.preview;
+      if (currentPreview?.startsWith("blob:")) URL.revokeObjectURL(currentPreview);
+
+      return {
+        ...prev,
+        variantImages: {
+          ...(prev.variantImages ?? {}),
+          [imageKey]: { file: null, preview: "" },
+        },
+      };
+    });
+    setVariantImageErrors((prev) => ({ ...prev, [imageKey]: "" }));
+  }, []);
+
   const handleDescriptionChange = (html: string) =>
     setForm((prev) => ({ ...prev, description: html }));
   const toggleTradeIn = () => setForm((prev) => ({ ...prev, tradeIn: !prev.tradeIn }));
@@ -355,6 +477,7 @@ export function useProductForm() {
       return {
         ...prev,
         variants: nextVariants,
+        variantImages: syncVariantImagesWithVariants(nextVariants, prev.variantImages ?? {}),
         matrix: syncMatrixWithVariants(nextVariants, prev.matrix, prev.inventoryPlan.weight),
       };
     });
@@ -362,9 +485,18 @@ export function useProductForm() {
   const removeVariant = (variantId: string) =>
     setForm((prev) => {
       const nextVariants = prev.variants.filter((variant) => variant.id !== variantId);
+      const nextVariantImages = syncVariantImagesWithVariants(nextVariants, prev.variantImages ?? {});
+      Object.keys(prev.variantImages ?? {})
+        .filter((key) => !(key in nextVariantImages))
+        .forEach((key) => {
+          const removedPreview = prev.variantImages?.[key]?.preview;
+          if (removedPreview?.startsWith("blob:")) URL.revokeObjectURL(removedPreview);
+        });
+      pruneVariantImageErrors(nextVariants);
       return {
         ...prev,
         variants: nextVariants,
+        variantImages: nextVariantImages,
         matrix: syncMatrixWithVariants(nextVariants, prev.matrix, prev.inventoryPlan.weight),
       };
     });
@@ -374,9 +506,18 @@ export function useProductForm() {
       const nextVariants = prev.variants.map((variant) =>
         variant.id === variantId ? { ...variant, name: value } : variant
       );
+      const nextVariantImages = syncVariantImagesWithVariants(nextVariants, prev.variantImages ?? {});
+      Object.keys(prev.variantImages ?? {})
+        .filter((key) => !(key in nextVariantImages))
+        .forEach((key) => {
+          const removedPreview = prev.variantImages?.[key]?.preview;
+          if (removedPreview?.startsWith("blob:")) URL.revokeObjectURL(removedPreview);
+        });
+      pruneVariantImageErrors(nextVariants);
       return {
         ...prev,
         variants: nextVariants,
+        variantImages: nextVariantImages,
         matrix: syncMatrixWithVariants(nextVariants, prev.matrix, prev.inventoryPlan.weight),
       };
     });
@@ -397,9 +538,12 @@ export function useProductForm() {
         if (!nextValue || variant.options.includes(nextValue)) return variant;
         return { ...variant, options: [...variant.options, nextValue], draftOption: "" };
       });
+      const nextVariantImages = syncVariantImagesWithVariants(nextVariants, prev.variantImages ?? {});
+      pruneVariantImageErrors(nextVariants);
       return {
         ...prev,
         variants: nextVariants,
+        variantImages: nextVariantImages,
         matrix: syncMatrixWithVariants(nextVariants, prev.matrix, prev.inventoryPlan.weight),
       };
     });
@@ -409,9 +553,18 @@ export function useProductForm() {
       const nextVariants = prev.variants.map((variant) =>
         variant.id === variantId ? { ...variant, options: variant.options.filter((entry) => entry !== option) } : variant
       );
+      const nextVariantImages = syncVariantImagesWithVariants(nextVariants, prev.variantImages ?? {});
+      Object.keys(prev.variantImages ?? {})
+        .filter((key) => !(key in nextVariantImages))
+        .forEach((key) => {
+          const removedPreview = prev.variantImages?.[key]?.preview;
+          if (removedPreview?.startsWith("blob:")) URL.revokeObjectURL(removedPreview);
+        });
+      pruneVariantImageErrors(nextVariants);
       return {
         ...prev,
         variants: nextVariants,
+        variantImages: nextVariantImages,
         matrix: syncMatrixWithVariants(nextVariants, prev.matrix, prev.inventoryPlan.weight),
       };
     });
@@ -431,24 +584,35 @@ export function useProductForm() {
         return prev;
       }
 
+      const nextVariantImages = syncVariantImagesWithVariants(nextVariants, prev.variantImages ?? {});
+      Object.keys(prev.variantImages ?? {})
+        .filter((key) => !(key in nextVariantImages))
+        .forEach((key) => {
+          const removedPreview = prev.variantImages?.[key]?.preview;
+          if (removedPreview?.startsWith("blob:")) URL.revokeObjectURL(removedPreview);
+        });
+      pruneVariantImageErrors(nextVariants);
       return {
         ...prev,
         variants: nextVariants,
+        variantImages: nextVariantImages,
         matrix: syncMatrixWithVariants(nextVariants, prev.matrix, prev.inventoryPlan.weight),
       };
     });
-  }, []);
+  }, [pruneVariantImageErrors]);
 
   return {
     form,
     setForm,
     variants,
     photos,
+    variantImageErrors,
     logistics,
     tradeIn,
     imageErrors,
     matrixData,
     combinations,
+    variantImages: form.variantImages,
     generateCombinations: buildCombinations,
     syncWarrantyVariantOptions,
     updateField,
@@ -456,7 +620,10 @@ export function useProductForm() {
     updateLogistics,
     updateShippingRates,
     handleImageChange,
+    handleBulkImageChange,
     handleRemoveImage,
+    handleVariantImageChange,
+    handleRemoveVariantImage,
     handleDescriptionChange,
     toggleTradeIn,
     addVariant,

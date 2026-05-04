@@ -70,6 +70,13 @@ return [
         'webhook_secret' => env('TRACKING_WEBHOOK_SECRET'),
     ],
 
+    // Admin registration bootstrap.
+    // When true, the first admin can self-register via the API without an existing superadmin.
+    // MUST be false (or unset) in production after initial setup.
+    'admin' => [
+        'allow_bootstrap' => env('ALLOW_ADMIN_BOOTSTRAP', false),
+    ],
+
     'tiktok_shop' => [
         'app_key' => env('TIKTOK_SHOP_APP_KEY'),
         'app_secret' => env('TIKTOK_SHOP_APP_SECRET'),

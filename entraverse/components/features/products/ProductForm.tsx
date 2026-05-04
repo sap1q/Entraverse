@@ -25,7 +25,9 @@ export default function ProductForm({ formState }: ProductFormProps) {
     form,
     variants,
     photos,
+    variantImages,
     imageErrors,
+    variantImageErrors,
     matrixData,
     combinations,
     syncWarrantyVariantOptions,
@@ -36,7 +38,10 @@ export default function ProductForm({ formState }: ProductFormProps) {
     updateLogistics,
     updateShippingRates,
     handleImageChange,
+    handleBulkImageChange,
     handleRemoveImage,
+    handleVariantImageChange,
+    handleRemoveVariantImage,
     handleDescriptionChange,
     toggleTradeIn,
     addVariant,
@@ -102,6 +107,7 @@ export default function ProductForm({ formState }: ProductFormProps) {
         photos={photos}
         imageErrors={imageErrors}
         handleImageChange={handleImageChange}
+        handleBulkImageChange={handleBulkImageChange}
         handleRemoveImage={handleRemoveImage}
       />
 
@@ -124,7 +130,11 @@ export default function ProductForm({ formState }: ProductFormProps) {
       <VariantMatrix
         combinations={combinations}
         matrixData={matrixData}
+        variantImages={variantImages}
+        variantImageErrors={variantImageErrors}
         updateField={updateField}
+        onVariantImageChange={handleVariantImageChange}
+        onVariantImageRemove={handleRemoveVariantImage}
         inventoryVolumeCbm={logistics.volume}
         shippingRates={logistics.shippingRates}
         onShippingRatesChange={updateShippingRates}
@@ -133,4 +143,3 @@ export default function ProductForm({ formState }: ProductFormProps) {
     </div>
   );
 }
-

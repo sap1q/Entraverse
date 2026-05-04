@@ -95,6 +95,7 @@ export const createInitialProductForm = (): ProductFormState => ({
   },
   tradeIn: false,
   photos: Array.from({ length: MAX_PHOTOS }, () => ({ file: null, preview: "" })),
+  variantImages: {},
   variants: [
     {
       id: createClientId("variant"),

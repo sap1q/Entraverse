@@ -8,8 +8,9 @@ import ProductForm from "@/components/features/products/ProductForm";
 import { calculateFinalBeli, DEFAULT_MATRIX_ROW } from "@/lib/utils";
 import { useProductForm } from "@/hooks/useProductForm";
 import { useProductSubmit } from "@/hooks/useProductSubmit";
-import { buildMediaSubmission } from "@/lib/product-media";
+import { buildGroupedMediaSubmission, buildMediaSubmission } from "@/lib/product-media";
 import { normalizeDescriptionHtml } from "@/lib/description";
+import { getSharedVariantImageKey } from "@/lib/product-variant-order";
 import { sumSharedInventoryStockFromCombinations } from "@/lib/sharedInventory";
 
 export default function CreateProductPage() {
@@ -18,19 +19,23 @@ export default function CreateProductPage() {
   const router = useRouter();
   const formState = useProductForm();
   const { submitProduct, loading, error } = useProductSubmit();
-  const { form, variants, photos, matrixData, combinations } = formState;
+  const { form, variants, photos, variantImages, matrixData, combinations } = formState;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaveMessage("");
     const mediaSubmission = buildMediaSubmission(photos);
+    const variantImageSubmission = buildGroupedMediaSubmission(variantImages);
 
     const variantPricingPayload = combinations.map((combo) => {
       const row = matrixData?.[combo.key] ?? DEFAULT_MATRIX_ROW;
+      const sharedVariantImageKey = getSharedVariantImageKey(combo);
       return {
         sku: `${form.basic.spu || "SKU"}-${combo.key.replaceAll("|", "-").replaceAll(":", "-")}`,
         label: combo.label,
         options: combo.values,
+        shared_variant_image_key: sharedVariantImageKey,
+        variant_image: variantImageSubmission.persisted[sharedVariantImageKey] ?? null,
         stock: row.stock,
         purchase_price: row.purchasePrice,
         currency: row.currency,
@@ -121,12 +126,18 @@ export default function CreateProductPage() {
     mediaSubmission.files.forEach((file) => {
       formData.append("images[]", file);
     });
+    variantImageSubmission.files.forEach(({ key, file }) => {
+      formData.append(`variant_image_file__${key}`, file);
+    });
 
     setPayloadPreview(
       JSON.stringify(
         {
           ...payload,
           images: mediaSubmission.files.map((file) => file.name),
+          variant_images: Object.fromEntries(
+            variantImageSubmission.files.map(({ key, file }) => [key, file.name])
+          ),
         },
         null,
         2

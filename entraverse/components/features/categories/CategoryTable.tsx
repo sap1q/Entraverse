@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { FeeChannel, FeeComponent } from "@/types/category.types";
 import { parseWarrantyProgram } from "@/lib/warrantyProgram";
+import { getStoredAdmin } from "@/lib/utils/storage";
 import type {
   Category,
   CategoryListParams,
@@ -70,6 +71,12 @@ const formatNumber = (value: number): string =>
   value.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 
 const formatCurrency = (value: number): string => `Rp ${formatNumber(Math.max(0, value))}`;
+
+const getFirstName = (value?: string | null): string => {
+  if (!value) return "";
+  const [firstName = ""] = value.trim().split(/\s+/);
+  return firstName;
+};
 
 const parseComponentNumber = (value: number | string | undefined): number => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -183,6 +190,7 @@ export default function CategoryTable({
   const editBasePath = pathname.startsWith("/admin") ? "/admin/categories" : "/categories";
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const currentAdminFirstName = getFirstName(getStoredAdmin()?.name);
 
   const handleConfirm = async () => {
     if (!confirm) return;
@@ -199,7 +207,7 @@ export default function CategoryTable({
   };
 
   return (
-    <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+    <section className="overflow-hidden rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
       <div className="mb-4 flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-xl font-semibold text-slate-800">Daftar Kategori</h2>
@@ -281,8 +289,17 @@ export default function CategoryTable({
         </div>
       ) : null}
 
-      <div className="hidden overflow-x-auto md:block">
-        <table className="min-w-[1150px] w-full border-separate border-spacing-0">
+      <div className="hidden md:block">
+        <table className="w-full table-fixed border-separate border-spacing-0">
+          <colgroup>
+            <col className="w-10" />
+            <col className="w-16" />
+            <col className="w-[16%]" />
+            <col className="w-[41%]" />
+            <col className="w-24" />
+            <col className="w-28" />
+            <col className="w-40" />
+          </colgroup>
           <thead>
             <tr>
               <th className="border-b border-slate-200 px-3 py-3 text-left">
@@ -310,14 +327,37 @@ export default function CategoryTable({
                   <tr key={`skeleton-${index}`}>
                     <td className="border-b border-gray-100 px-3 py-4"><div className="h-4 w-4 animate-pulse rounded bg-slate-200" /></td>
                     <td className="border-b border-gray-100 px-3 py-4"><div className="h-9 w-9 animate-pulse rounded-lg bg-slate-200" /></td>
-                    <td className="border-b border-gray-100 px-3 py-4"><div className="h-4 w-40 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="border-b border-gray-100 px-3 py-4"><div className="h-12 w-full animate-pulse rounded-xl bg-slate-200" /></td>
+                    <td className="border-b border-gray-100 px-3 py-4">
+                      <div className="h-4 w-32 max-w-full animate-pulse rounded bg-slate-200" />
+                    </td>
+                    <td className="border-b border-gray-100 px-3 py-4">
+                      <div className="space-y-2">
+                        <div className="h-4 w-full animate-pulse rounded bg-slate-200" />
+                        <div className="h-4 w-11/12 animate-pulse rounded bg-slate-200" />
+                        <div className="h-4 w-4/5 animate-pulse rounded bg-slate-200" />
+                      </div>
+                    </td>
                     <td className="border-b border-gray-100 px-3 py-4"><div className="h-7 w-20 animate-pulse rounded-full bg-slate-200" /></td>
-                    <td className="border-b border-gray-100 px-3 py-4"><div className="h-4 w-44 animate-pulse rounded bg-slate-200" /></td>
-                    <td className="border-b border-gray-100 px-3 py-4"><div className="h-8 w-20 animate-pulse rounded bg-slate-200" /></td>
+                    <td className="border-b border-gray-100 px-3 py-4">
+                      <div className="space-y-1.5">
+                        <div className="h-3.5 w-20 animate-pulse rounded bg-slate-200" />
+                        <div className="h-3.5 w-16 animate-pulse rounded bg-slate-200" />
+                      </div>
+                    </td>
+                    <td className="border-b border-gray-100 px-3 py-4">
+                      <div className="flex items-center gap-2 whitespace-nowrap">
+                        <div className="h-8 w-8 animate-pulse rounded-lg bg-slate-200" />
+                        <div className="h-8 w-8 animate-pulse rounded-lg bg-slate-200" />
+                        <div className="h-8 w-8 animate-pulse rounded-lg bg-slate-200" />
+                      </div>
+                    </td>
                   </tr>
                 ))
-              : categories.map((category) => (
+              : categories.map((category) => {
+                  const activityName = getFirstName(category.activity?.updatedBy ?? category.activity?.createdBy);
+                  const displayActor = activityName || currentAdminFirstName || "-";
+
+                  return (
                   <tr key={category.id} className="transition hover:bg-slate-50">
                     <td className="border-b border-gray-100 px-3 py-4 align-top">
                       <input
@@ -332,8 +372,8 @@ export default function CategoryTable({
                       </div>
                     </td>
                     <td className="border-b border-gray-100 px-3 py-4 align-top text-sm font-semibold text-slate-800">
-                      <div className="flex items-center gap-2">
-                        {category.name}
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span className="min-w-0 break-words">{category.name}</span>
                         {category.deleted_at ? (
                           <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-600">
                             Deleted
@@ -342,17 +382,17 @@ export default function CategoryTable({
                       </div>
                     </td>
                     <td className="border-b border-gray-100 px-3 py-4 align-top text-xs text-slate-600">
-                      <div className="max-w-[540px] space-y-1">
+                      <div className="min-w-0 space-y-1">
                         {buildMarketplaceSummaries(category).map((item) => (
                           <div
                             key={`${category.id}-${item.label}`}
-                            className="grid grid-cols-[84px_12px_minmax(0,1fr)] items-start gap-x-1 leading-6"
+                            className="grid grid-cols-[72px_10px_minmax(0,1fr)] items-start gap-x-1 leading-6"
                           >
                             <span className={`text-left text-[11px] font-bold ${item.className}`}>
                               {item.label}
                             </span>
                             <span className={`text-center text-[11px] font-bold ${item.className}`}>:</span>
-                            <p className="min-w-0 text-justify text-slate-700 [text-align-last:left]" title={item.value}>
+                            <p className="min-w-0 break-words text-slate-700" title={item.value}>
                               {item.value}
                             </p>
                           </div>
@@ -364,12 +404,14 @@ export default function CategoryTable({
                         {formatNumber(category.min_margin)}%
                       </span>
                     </td>
-                    <td className="border-b border-gray-100 px-3 py-4 align-top text-xs text-slate-600">
-                      <p>By: {category.activity?.updatedBy ?? category.activity?.createdBy ?? "-"}</p>
-                      <p>{toDate(category.updated_at ?? category.created_at)}</p>
+                    <td className="border-b border-gray-100 px-3 py-4 align-top text-xs leading-5 text-slate-600">
+                      <div className="space-y-0.5">
+                        <p className="truncate">By: {displayActor}</p>
+                        <p>{toDate(category.updated_at ?? category.created_at)}</p>
+                      </div>
                     </td>
                     <td className="border-b border-gray-100 px-3 py-4 align-top">
-                      <div className="flex items-center gap-2 whitespace-nowrap">
+                      <div className="flex flex-nowrap items-center gap-2 whitespace-nowrap">
                         <Link
                           href={`${editBasePath}/${category.id}`}
                           className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
@@ -413,7 +455,8 @@ export default function CategoryTable({
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
           </tbody>
         </table>
       </div>
@@ -447,11 +490,11 @@ export default function CategoryTable({
                     >
                       <span className={`text-left text-[11px] font-bold ${item.className}`}>{item.label}</span>
                       <span className={`text-center text-[11px] font-bold ${item.className}`}>:</span>
-                      <p className="text-justify [text-align-last:left]">{item.value}</p>
+                      <p className="break-words">{item.value}</p>
                     </div>
                   ))}
                 </div>
-                <div className="mt-3 flex items-center gap-2 whitespace-nowrap">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <Link href={`${editBasePath}/${category.id}`} className="rounded-lg border border-slate-200 px-2 py-1 text-xs">Edit</Link>
                   <button type="button" onClick={() => onDuplicate(category)} className="rounded-lg border border-slate-200 px-2 py-1 text-xs">Copy</button>
                   <button type="button" onClick={() => setConfirm({ type: "delete", id: category.id, title: `Hapus ${category.name}?`, description: "Kategori akan di-soft delete." })} className="rounded-lg border border-rose-200 px-2 py-1 text-xs text-rose-600">Hapus</button>

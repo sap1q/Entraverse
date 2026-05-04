@@ -10,6 +10,7 @@ type MediaUploadProps = {
   photos: PhotoSlot[];
   imageErrors: string[];
   handleImageChange: (slotIndex: number, file: File | null) => void;
+  handleBulkImageChange: (slotIndex: number, files: File[]) => void;
   handleRemoveImage: (slotIndex: number) => void;
 };
 
@@ -61,6 +62,7 @@ export default function MediaUpload({
   photos,
   imageErrors,
   handleImageChange,
+  handleBulkImageChange,
   handleRemoveImage,
 }: MediaUploadProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -163,14 +165,19 @@ export default function MediaUpload({
         ref={fileInputRef}
         type="file"
         accept="image/*"
+        multiple
         className="hidden"
         onChange={(event) => {
-          const file = event.currentTarget.files?.[0] ?? null;
-          if (file) handleImageChange(uploadTargetIndex, file);
+          const files = Array.from(event.currentTarget.files ?? []);
+          if (files.length === 1) {
+            handleImageChange(uploadTargetIndex, files[0] ?? null);
+          } else if (files.length > 1) {
+            handleBulkImageChange(uploadTargetIndex, files);
+          }
           event.currentTarget.value = "";
         }}
       />
-      <p className="text-xs text-slate-500">Unggah hingga 5 foto. Maksimal ukuran tiap file 2MB.</p>
+      <p className="text-xs text-slate-500">Unggah hingga 5 foto. Bisa pilih beberapa file sekaligus. Maksimal ukuran tiap file 2MB.</p>
     </section>
   );
 }

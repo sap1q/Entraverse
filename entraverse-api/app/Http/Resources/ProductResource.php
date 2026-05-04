@@ -258,7 +258,7 @@ class ProductResource extends JsonResource
         }
 
         if (Str::startsWith($normalized, 'products/')) {
-            return route('products.image', ['path' => $normalized]);
+            return route('v1.products.image', ['path' => $normalized]);
         }
 
         if (Str::startsWith($trimmed, '/')) {

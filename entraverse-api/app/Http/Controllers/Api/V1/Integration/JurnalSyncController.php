@@ -202,6 +202,12 @@ class JurnalSyncController extends Controller
         } catch (InvalidArgumentException $exception) {
             return $this->configurationErrorResponse($exception);
         } catch (MekariApiException $exception) {
+            Log::error('Mekari API Exception during import', [
+                'message' => $exception->getMessage(),
+                'status' => $exception->getStatusCode(),
+                'response' => $exception->getResponseBody(),
+            ]);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to import products from Jurnal.',
@@ -449,9 +455,17 @@ class JurnalSyncController extends Controller
 
     protected function isValidWebhookSignature(Request $request): bool
     {
-        $secret = (string) config('services.mekari.webhook_secret', '');
+        $secret = trim((string) config('services.mekari.webhook_secret', ''));
+
+        // SECURITY: if webhook secret is not configured, REJECT all requests.
+        // An unconfigured secret means the endpoint is effectively unauthenticated.
+        // Set MEKARI_WEBHOOK_SECRET in your .env to enable webhook ingestion.
         if ($secret === '') {
-            return true;
+            Log::warning('Mekari webhook rejected: MEKARI_WEBHOOK_SECRET is not configured.', [
+                'ip' => $request->ip(),
+            ]);
+
+            return false;
         }
 
         $providedSignature = (string) $request->header('X-Mekari-Signature', $request->header('X-Hub-Signature-256', ''));

@@ -542,6 +542,7 @@ export const normalizeStoredProduct = (state: AdminState, input: {
   existing?: StoredProduct | null;
   body: FormData | Record<string, unknown>;
   uploadedPhotoUrls?: string[];
+  variantImageUrls?: Record<string, string>;
 }) => {
   const isFormData = input.body instanceof FormData;
   const source = isFormData ? {} : (input.body as Record<string, unknown>);
@@ -581,7 +582,21 @@ export const normalizeStoredProduct = (state: AdminState, input: {
   const variantPricing = parseJsonField<Array<Record<string, unknown>>>(
     isFormData ? (input.body as FormData).get("variant_pricing") : null,
     existing?.variant_pricing ?? []
-  );
+  ).map((row) => {
+    const source = asObject(row);
+    const sharedVariantImageKey = toString(source.shared_variant_image_key ?? source.variant_image_key).trim();
+    const variantImageFromUpload = sharedVariantImageKey ? input.variantImageUrls?.[sharedVariantImageKey] : null;
+
+    if (!variantImageFromUpload) {
+      return source;
+    }
+
+    return {
+      ...source,
+      shared_variant_image_key: sharedVariantImageKey,
+      variant_image: variantImageFromUpload,
+    };
+  });
   const inventory = parseJsonField<Record<string, unknown>>(
     isFormData ? (input.body as FormData).get("inventory") : null,
     existing?.inventory ?? {}

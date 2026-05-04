@@ -117,6 +117,8 @@ export default function ProductTable({
     [brandFilter, categoryFilter, featuredOnly, statusFilter, stockFilter]
   );
 
+  const totalProductCount = pagination?.total ?? products.length;
+
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
       if (!filterRef.current) return;
@@ -145,7 +147,7 @@ export default function ProductTable({
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-semibold text-slate-800">Daftar Produk</h2>
               <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                {products.length} produk
+                {totalProductCount} produk
               </span>
             </div>
 

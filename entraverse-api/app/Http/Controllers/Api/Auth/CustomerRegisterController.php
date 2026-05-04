@@ -34,16 +34,19 @@ class CustomerRegisterController extends Controller
                 'email_verified_at' => now(), // Auto verify for simplicity
             ]);
 
-            // Issue token using Sanctum
+            // Issue Sanctum token.
             $token = $user->createToken('customer-app')->plainTextToken;
 
             Log::info('Customer registration success', ['user_id' => (string) $user->id]);
 
+            // Use configured expiration (default 10.080 minutes = 7 days via sanctum.php).
+            $expiresIn = (int) config('sanctum.expiration', 10080);
+
             return $this->success([
-                'token' => $token,
+                'token'      => $token,
                 'token_type' => 'Bearer',
-                'user' => $user,
-                'expires_in' => config('sanctum.expiration', 525600),
+                'user'       => $user,
+                'expires_in' => $expiresIn,
             ], 'Registrasi berhasil.');
 
         } catch (ValidationException $exception) {

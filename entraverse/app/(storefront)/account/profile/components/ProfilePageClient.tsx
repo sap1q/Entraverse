@@ -288,7 +288,9 @@ export function ProfilePageClient() {
       const resolvedApiAvatar = resolveApiAssetUrl(updatedProfile.avatar);
       const resolvedAvatarPreview = shouldRemoveAvatar
         ? null
-        : resolvedApiAvatar || localAvatarPreview || avatarPreview || getCachedProfileAvatar() || null;
+        : hasNewAvatar
+          ? localAvatarPreview || resolvedApiAvatar || avatarPreview || getCachedProfileAvatar() || null
+          : resolvedApiAvatar || avatarPreview || getCachedProfileAvatar() || null;
 
       setProfile(updatedProfile);
       syncAvatarPreview(resolvedAvatarPreview);

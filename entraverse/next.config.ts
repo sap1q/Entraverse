@@ -26,7 +26,7 @@ const configuredApiRemotePattern = resolveRemotePattern(process.env.NEXT_PUBLIC_
 
 const nextConfig: NextConfig = {
   images: {
-    dangerouslyAllowLocalIP: true,
+    ...(process.env.NODE_ENV === "development" ? { dangerouslyAllowLocalIP: true } : {}),
     remotePatterns: [
       {
         protocol: "http",
@@ -49,12 +49,6 @@ const nextConfig: NextConfig = {
       {
         protocol: "http",
         hostname: "localhost",
-        port: "8000",
-        pathname: "/**",
-      },
-      {
-        protocol: "http",
-        hostname: "192.168.1.22",
         port: "8000",
         pathname: "/**",
       },

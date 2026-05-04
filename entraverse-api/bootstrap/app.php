@@ -13,14 +13,6 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
-    
-    ->withMiddleware(function (Middleware $middleware) {
-        $middleware->alias([
-            // ... yang sudah ada ...
-            'deprecated' => \App\Http\Middleware\DeprecatedRoute::class,
-        ]);
-    })
-
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
         $middleware->validateCsrfTokens(except: [
@@ -62,6 +54,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => \App\Http\Middleware\AdminMiddleware::class,
             'admin.secure' => \App\Http\Middleware\AdminSecureHeader::class,
             'customer' => \App\Http\Middleware\CustomerMiddleware::class,
+            'deprecated' => \App\Http\Middleware\DeprecatedRoute::class,
         ]);
 
         //

@@ -20,7 +20,7 @@ export function BannerCard({ banner, isFirst = false }: BannerCardProps) {
         loading={isFirst ? "eager" : "lazy"}
         fetchPriority={isFirst ? "high" : "auto"}
         decoding="async"
-        className="h-full w-full object-contain object-center transition-transform duration-700 ease-out group-hover:scale-[1.01]"
+        className="block h-full w-full object-contain object-center transition-transform duration-700 ease-out group-hover:scale-[1.01]"
       />
     </div>
   );

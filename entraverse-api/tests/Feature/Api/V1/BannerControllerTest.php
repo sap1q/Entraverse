@@ -59,7 +59,7 @@ test('active banner response rewrites image url to the public banner image endpo
         ->assertJsonPath('success', true)
         ->assertJsonPath(
             'data.0.image_url',
-            route('banners.image', ['path' => 'banners/existing-banner.jpg'])
+            route('v1.banners.image', ['path' => 'banners/existing-banner.jpg'])
         );
 });
 

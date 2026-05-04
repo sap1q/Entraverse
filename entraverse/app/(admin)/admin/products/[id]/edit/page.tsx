@@ -13,10 +13,12 @@ import { calculateFinalBeli, DEFAULT_MATRIX_ROW, DEFAULT_SHIPPING_RATES } from "
 import type { MatrixPricing, ProductFormState, ShippingRates, VariantDefinition } from "@/types/product";
 import {
   PRODUCT_MEDIA_MAX_PHOTOS,
+  buildGroupedMediaSubmission,
   buildMediaSubmission,
   isPersistablePhotoPath,
 } from "@/lib/product-media";
 import { normalizeDescriptionHtml } from "@/lib/description";
+import { getSharedVariantImageKey, sortVariantCombinations } from "@/lib/product-variant-order";
 import { normalizeSharedInventoryMatrix, sumSharedInventoryStockFromCombinations } from "@/lib/sharedInventory";
 import { createClientId } from "@/lib/client-id";
 
@@ -210,14 +212,14 @@ const buildVariantCombinationsForPrefill = (variants: VariantDefinition[]) => {
     combinations = next;
   });
 
-  return combinations.map((values) => {
+  return sortVariantCombinations(combinations.map((values) => {
     const entries = Object.entries(values);
     return {
       key: entries.map(([name, option]) => `${name}:${option}`).join("|"),
       label: entries.map(([name, option]) => `${name}: ${option}`).join(" / "),
       values,
     };
-  });
+  }));
 };
 
 const mapPricingRow = (row: RawMatrixRow, fallbackWeight = 0, fallbackPurchasePrice = 0): MatrixPricing => ({
@@ -279,6 +281,7 @@ const buildPrefilledState = (product: ProductDetail): ProductFormState => {
   );
   const pricingRows = Array.isArray(product.variant_pricing) ? product.variant_pricing : [];
   const matrix: Record<string, MatrixPricing> = {};
+  const variantImages: ProductFormState["variantImages"] = {};
 
   pricingRows.forEach((row) => {
     if (!row || typeof row !== "object") return;
@@ -288,6 +291,23 @@ const buildPrefilledState = (product: ProductDetail): ProductFormState => {
     const keyFromLabel = combinationByLabel.get(toText(rowObj.label).trim().toLowerCase());
     const key = keyFromOptions !== "default" ? keyFromOptions : (keyFromLabel ?? "default");
     matrix[key] = mapPricingRow(row as RawMatrixRow, inventoryWeight, inventoryPurchasePrice);
+
+    const sharedVariantImageKey =
+      toText(rowObj.shared_variant_image_key ?? rowObj.variant_image_key).trim() ||
+      getSharedVariantImageKey({
+        key,
+        label: toText(rowObj.label),
+        values: Object.fromEntries(
+          Object.entries(options).map(([name, value]) => [name, toText(value).trim()])
+        ),
+      });
+    const variantImagePreview = toText(rowObj.variant_image).trim();
+    if (sharedVariantImageKey && variantImagePreview && isPersistablePhotoPath(variantImagePreview) && !variantImages[sharedVariantImageKey]) {
+      variantImages[sharedVariantImageKey] = {
+        file: null,
+        preview: variantImagePreview,
+      };
+    }
   });
 
   if (Object.keys(matrix).length === 0) {
@@ -348,6 +368,7 @@ const buildPrefilledState = (product: ProductDetail): ProductFormState => {
     },
     tradeIn: Boolean(product.trade_in),
     photos,
+    variantImages,
     variants: variantDefinitions,
     matrix: normalizedMatrix,
   };
@@ -365,7 +386,7 @@ export default function EditProductPage() {
   const { product, loading, error, notFound } = useProduct(productId);
   const formState = useProductForm();
   const { submitProduct, loading: submitLoading, error: submitError } = useProductSubmit();
-  const { form, variants, photos, matrixData, combinations, setForm } = formState;
+  const { form, variants, photos, variantImages, matrixData, combinations, setForm } = formState;
 
   useEffect(() => {
     if (!product) return;
@@ -385,13 +406,17 @@ export default function EditProductPage() {
     setIsSaving(true);
     setSaveMessage("");
     const mediaSubmission = buildMediaSubmission(photos);
+    const variantImageSubmission = buildGroupedMediaSubmission(variantImages);
 
     const variantPricingPayload = combinations.map((combo) => {
       const row = matrixData?.[combo.key] ?? DEFAULT_MATRIX_ROW;
+      const sharedVariantImageKey = getSharedVariantImageKey(combo);
       return {
         sku: `${form.basic.spu || "SKU"}-${combo.key.replaceAll("|", "-").replaceAll(":", "-")}`,
         label: combo.label,
         options: combo.values,
+        shared_variant_image_key: sharedVariantImageKey,
+        variant_image: variantImageSubmission.persisted[sharedVariantImageKey] ?? null,
         stock: row.stock,
         purchase_price: row.purchasePrice,
         currency: row.currency,
@@ -483,6 +508,9 @@ export default function EditProductPage() {
     formData.append("photos", JSON.stringify(payload.photos));
     mediaSubmission.files.forEach((file) => {
       formData.append("images[]", file);
+    });
+    variantImageSubmission.files.forEach(({ key, file }) => {
+      formData.append(`variant_image_file__${key}`, file);
     });
 
     const result = await submitProduct({ payload: formData, mode: "edit", productId });
