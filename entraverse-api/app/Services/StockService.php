@@ -6,17 +6,23 @@ namespace App\Services;
 
 use App\Models\Admin;
 use App\Models\Product;
+use App\Models\SalesOrder;
 use App\Models\StockMutation;
 use App\Support\SharedInventory;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use RuntimeException;
 
 class StockService
 {
     private const DEFAULT_WAREHOUSE = 'Gudang Utama';
     private const LOW_STOCK_THRESHOLD = 6;
+
+    public function __construct(private readonly OrderItemPreparer $preparer)
+    {
+    }
 
     public function listAllInventoryRows(array $filters = []): Collection
     {
@@ -258,6 +264,202 @@ class StockService
                 'mutation' => $mutation->load(['product:id,name,spu', 'admin:id,name,email']),
             ];
         });
+    }
+
+    /**
+     * Deduct stock saat order dibuat (checkout).
+     * Dipanggil oleh PlaceOrderAction setelah DB::transaction order selesai.
+     *
+     * @param array<int, array<string, mixed>> $preparedItems Item dari OrderItemPreparer::prepare()
+     */
+    public function deductOnCheckout(SalesOrder $order, array $preparedItems): void
+    {
+        $deductedAnyStock = false;
+
+        foreach ($preparedItems as $item) {
+            $metadata = is_array($item['metadata'] ?? null) ? $item['metadata'] : [];
+            if ((bool) ($metadata['trade_in_enabled'] ?? false)) {
+                continue;
+            }
+
+            $product = Product::query()
+                ->lockForUpdate()
+                ->find((string) ($item['product_id'] ?? ''));
+
+            if (! $product) {
+                throw new RuntimeException("Produk {$item['product_id']} tidak ditemukan saat checkout.");
+            }
+
+            $variantRows = $this->preparer->extractVariantRows($product);
+            $targetSku = trim((string) ($item['variant_sku'] ?? ''));
+            $targetIndex = null;
+
+            foreach ($variantRows as $index => $variantRow) {
+                if (strcasecmp($this->preparer->resolveSku($product, $variantRow), $targetSku) === 0) {
+                    $targetIndex = $index;
+                    break;
+                }
+            }
+
+            if ($targetIndex === null) {
+                throw new RuntimeException("SKU {$targetSku} tidak ditemukan saat checkout.");
+            }
+
+            $targetVariant = $variantRows[$targetIndex];
+            $warehouse = trim((string) ($item['warehouse'] ?? '')) ?: $this->preparer->resolveWarehouse($targetVariant, $product);
+            $warehouseStock = $this->preparer->normalizeWarehouseStock(
+                $targetVariant['warehouse_stock'] ?? null,
+                $warehouse,
+                (int) ($targetVariant['stock'] ?? 0)
+            );
+
+            $currentStock = (int) ($warehouseStock[$warehouse] ?? 0);
+            $quantity = max(1, (int) ($item['quantity'] ?? 1));
+            if ($currentStock < $quantity) {
+                throw new RuntimeException("Stok tidak cukup untuk SKU {$targetSku} saat checkout.");
+            }
+
+            $warehouseStock[$warehouse] = $currentStock - $quantity;
+            $targetGroupKey = (string) ($targetVariant['shared_inventory_key'] ?? SharedInventory::groupKeyForVariant($targetVariant));
+
+            foreach ($variantRows as $index => $variantRow) {
+                $rowGroupKey = (string) ($variantRow['shared_inventory_key'] ?? SharedInventory::groupKeyForVariant($variantRow));
+                if ($rowGroupKey !== $targetGroupKey) {
+                    continue;
+                }
+
+                $variantRow['warehouse'] = $warehouse;
+                $variantRow['warehouse_stock'] = $warehouseStock;
+                $variantRow['stock'] = (int) collect($warehouseStock)->sum();
+                $variantRows[$index] = $variantRow;
+            }
+
+            $updatedTotalStock = SharedInventory::totalStockFromRows($variantRows);
+            $inventory = is_array($product->inventory) ? $product->inventory : [];
+            $inventory['total_stock'] = $updatedTotalStock;
+
+            $product->variant_pricing = array_values($variantRows);
+            $product->inventory = $inventory;
+            $product->stock = $updatedTotalStock;
+            $product->stock_status = $updatedTotalStock > 0 ? 'in_stock' : 'out_of_stock';
+            $product->save();
+
+            StockMutation::query()->create([
+                'product_id' => (string) $product->id,
+                'variant_sku' => $targetSku,
+                'type' => 'out',
+                'quantity' => -$quantity,
+                'reference' => 'checkout:' . (string) $order->order_number,
+                'note' => sprintf(
+                    'Checkout customer | warehouse %s | sebelum %d | sesudah %d',
+                    $warehouse,
+                    $currentStock,
+                    $warehouseStock[$warehouse]
+                ),
+                'user_id' => null,
+            ]);
+
+            $deductedAnyStock = true;
+        }
+
+        if ($deductedAnyStock) {
+            $this->markStockAsDeducted($order, 'checkout_created');
+        }
+    }
+
+    /**
+     * Deduct stock saat payment settlement dikonfirmasi Midtrans.
+     * Dipanggil oleh HandlePaymentCallbackAction setelah status order diupdate.
+     */
+    public function deductOnSettlement(SalesOrder $order): void
+    {
+        $order->loadMissing('items');
+
+        foreach ($order->items as $item) {
+            $metadata = is_array($item->metadata) ? $item->metadata : [];
+            if ((bool) ($metadata['trade_in_enabled'] ?? false)) {
+                continue;
+            }
+
+            $product = Product::query()
+                ->lockForUpdate()
+                ->find($item->product_id);
+
+            if (! $product) {
+                throw new RuntimeException("Produk {$item->product_id} tidak ditemukan untuk pengurangan stok.");
+            }
+
+            $variantRows = $this->preparer->extractVariantRows($product);
+            $targetSku = trim((string) $item->variant_sku);
+            $targetIndex = null;
+
+            foreach ($variantRows as $index => $variantRow) {
+                if (strcasecmp($this->preparer->resolveSku($product, $variantRow), $targetSku) === 0) {
+                    $targetIndex = $index;
+                    break;
+                }
+            }
+
+            if ($targetIndex === null) {
+                throw new RuntimeException("SKU {$targetSku} tidak ditemukan saat settlement.");
+            }
+
+            $targetVariant = $variantRows[$targetIndex];
+            $warehouse = trim((string) ($item->warehouse ?: $this->preparer->resolveWarehouse($targetVariant, $product)));
+            $warehouseStock = $this->preparer->normalizeWarehouseStock(
+                $targetVariant['warehouse_stock'] ?? null,
+                $warehouse,
+                (int) ($targetVariant['stock'] ?? 0)
+            );
+
+            $currentStock = (int) ($warehouseStock[$warehouse] ?? 0);
+            if ($currentStock < (int) $item->quantity) {
+                throw new RuntimeException("Stok tidak cukup untuk SKU {$targetSku} saat settlement.");
+            }
+
+            $warehouseStock[$warehouse] = $currentStock - (int) $item->quantity;
+            $targetGroupKey = (string) ($targetVariant['shared_inventory_key'] ?? SharedInventory::groupKeyForVariant($targetVariant));
+
+            foreach ($variantRows as $index => $variantRow) {
+                $rowGroupKey = (string) ($variantRow['shared_inventory_key'] ?? SharedInventory::groupKeyForVariant($variantRow));
+                if ($rowGroupKey !== $targetGroupKey) {
+                    continue;
+                }
+
+                $variantRow['warehouse'] = $warehouse;
+                $variantRow['warehouse_stock'] = $warehouseStock;
+                $variantRow['stock'] = (int) collect($warehouseStock)->sum();
+                $variantRows[$index] = $variantRow;
+            }
+
+            $updatedTotalStock = SharedInventory::totalStockFromRows($variantRows);
+            $inventory = is_array($product->inventory) ? $product->inventory : [];
+            $inventory['total_stock'] = $updatedTotalStock;
+
+            $product->variant_pricing = array_values($variantRows);
+            $product->inventory = $inventory;
+            $product->stock = $updatedTotalStock;
+            $product->stock_status = $updatedTotalStock > 0 ? 'in_stock' : 'out_of_stock';
+            $product->save();
+        }
+
+        $this->markStockAsDeducted($order, 'payment_settlement');
+    }
+
+    private function hasDeductedStock(SalesOrder $order): bool
+    {
+        $metadata = is_array($order->shipping_metadata) ? $order->shipping_metadata : [];
+
+        return is_string($metadata['stock_deducted_at'] ?? null) && trim((string) $metadata['stock_deducted_at']) !== '';
+    }
+
+    private function markStockAsDeducted(SalesOrder $order, string $source): void
+    {
+        $metadata = is_array($order->shipping_metadata) ? $order->shipping_metadata : [];
+        $metadata['stock_deducted_at'] = now()->toISOString();
+        $metadata['stock_deduction_source'] = $source;
+        $order->shipping_metadata = $metadata;
+        $order->save();
     }
 
     /**

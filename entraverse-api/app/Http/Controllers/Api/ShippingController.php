@@ -4,17 +4,17 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Actions\Checkout\EstimateShippingAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ShippingCostRequest;
 use App\Models\User;
-use App\Services\CheckoutService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 class ShippingController extends Controller
 {
-    public function __construct(private readonly CheckoutService $checkoutService)
+    public function __construct(private readonly EstimateShippingAction $estimateShippingAction)
     {
     }
 
@@ -24,7 +24,7 @@ class ShippingController extends Controller
             $validated = $request->validated();
             /** @var User $user */
             $user = $request->user();
-            $result = $this->checkoutService->estimateShippingCost(
+            $result = $this->estimateShippingAction->execute(
                 user: $user,
                 courier: (string) $validated['courier'],
                 addressId: isset($validated['address_id']) ? (string) $validated['address_id'] : null,

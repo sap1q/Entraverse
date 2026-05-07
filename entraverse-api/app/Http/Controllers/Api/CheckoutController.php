@@ -4,21 +4,26 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Actions\Checkout\PlaceOrderAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ProcessCheckoutRequest;
+use App\Http\Resources\SalesOrderResource;
+use App\Http\Resources\TradeInTransactionResource;
 use App\Models\SalesOrder;
 use App\Models\TradeInTransaction;
 use App\Models\User;
-use App\Services\CheckoutService;
 use App\Services\MidtransService;
+use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 class CheckoutController extends Controller
 {
+    use ApiResponse;
+
     public function __construct(
-        private readonly CheckoutService $checkoutService,
+        private readonly PlaceOrderAction $placeOrderAction,
         private readonly MidtransService $midtransService
     ) {
     }
@@ -28,28 +33,24 @@ class CheckoutController extends Controller
         try {
             /** @var User $user */
             $user = $request->user();
-            $result = $this->checkoutService->processCheckout($user, $request->validated());
+            $result = $this->placeOrderAction->execute($user, $request->validated());
             $order = $result['order'];
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Checkout berhasil diproses.',
-                'data' => [
-                    'entry_kind' => (string) ($result['kind'] ?? 'sales_order'),
-                    'requires_payment' => (bool) ($result['requires_payment'] ?? true),
-                    'order' => $order instanceof SalesOrder ? $this->transformOrder($order) : null,
-                    'trade_in_transactions' => collect($result['trade_in_transactions'] ?? [])
-                        ->map(fn (TradeInTransaction $transaction): array => $this->transformTradeInTransaction($transaction))
-                        ->values()
-                        ->all(),
-                    'snap_token' => $result['snap_token'],
-                    'snap_redirect_url' => $result['snap_redirect_url'],
-                    'midtrans_client_key' => $this->midtransService->clientKey(),
-                    'midtrans_snap_js_url' => $this->midtransService->snapJsUrl(),
-                    'shipping' => $result['shipping'],
-                    'shipping_weight' => $result['shipping_weight'],
-                ],
-            ], 201);
+            return $this->created([
+                'entry_kind' => (string) ($result['kind'] ?? 'sales_order'),
+                'requires_payment' => (bool) ($result['requires_payment'] ?? true),
+                'order' => $order instanceof SalesOrder ? (new SalesOrderResource($order))->toArray($request) : null,
+                'trade_in_transactions' => collect($result['trade_in_transactions'] ?? [])
+                    ->map(fn (TradeInTransaction $transaction): array => (new TradeInTransactionResource($transaction))->toArray($request))
+                    ->values()
+                    ->all(),
+                'snap_token' => $result['snap_token'],
+                'snap_redirect_url' => $result['snap_redirect_url'],
+                'midtrans_client_key' => $this->midtransService->clientKey(),
+                'midtrans_snap_js_url' => $this->midtransService->snapJsUrl(),
+                'shipping' => $result['shipping'],
+                'shipping_weight' => $result['shipping_weight'],
+            ], 'Checkout berhasil diproses.');
         } catch (ValidationException $exception) {
             return response()->json([
                 'success' => false,
@@ -64,55 +65,12 @@ class CheckoutController extends Controller
         }
     }
 
-    private function transformOrder(SalesOrder $order): array
+    protected function created(mixed $data = null, ?string $message = null): JsonResponse
     {
-        return [
-            'id' => (string) $order->id,
-            'order_number' => (string) $order->order_number,
-            'status' => (string) $order->status,
-            'payment_status' => (string) ($order->payment_status ?? 'pending'),
-            'customer_name' => (string) $order->customer_name,
-            'customer_phone' => $order->customer_phone,
-            'customer_email' => $order->customer_email,
-            'customer_address' => $order->customer_address,
-            'discount_amount' => (float) $order->discount_amount,
-            'shipping_courier' => $order->shipping_courier,
-            'shipping_service' => $order->shipping_service,
-            'shipping_etd' => $order->shipping_etd,
-            'shipping_weight' => (int) ($order->shipping_weight ?? 0),
-            'subtotal' => (float) $order->subtotal,
-            'shipping_cost' => (float) $order->shipping_cost,
-            'total_amount' => (float) $order->total_amount,
-            'items' => $order->items->map(function ($item): array {
-                return [
-                    'id' => (string) $item->id,
-                    'product_id' => (string) $item->product_id,
-                    'product_name' => (string) $item->product_name,
-                    'variant_name' => $item->variant_name,
-                    'variant_sku' => (string) $item->variant_sku,
-                    'warehouse' => (string) $item->warehouse,
-                    'quantity' => (int) $item->quantity,
-                    'unit_price' => (float) $item->unit_price,
-                    'line_total' => (float) $item->line_total,
-                    'metadata' => is_array($item->metadata) ? $item->metadata : [],
-                ];
-            })->values()->all(),
-            'created_at' => optional($order->created_at)?->toISOString(),
-            'updated_at' => optional($order->updated_at)?->toISOString(),
-        ];
-    }
-
-    private function transformTradeInTransaction(TradeInTransaction $transaction): array
-    {
-        return [
-            'id' => (string) $transaction->id,
-            'transaction_number' => (string) $transaction->transaction_number,
-            'status' => (string) $transaction->status,
-            'trade_in_only' => (bool) $transaction->trade_in_only,
-            'estimated_amount' => (float) $transaction->estimated_amount,
-            'requested_product_name' => $transaction->requested_product_name,
-            'created_at' => optional($transaction->created_at)?->toISOString(),
-            'updated_at' => optional($transaction->updated_at)?->toISOString(),
-        ];
+        return response()->json([
+            'success' => true,
+            'message' => $message ?? 'Created',
+            'data' => $data,
+        ], 201);
     }
 }

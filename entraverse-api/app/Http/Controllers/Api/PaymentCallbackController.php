@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Actions\Checkout\HandlePaymentCallbackAction;
 use App\Http\Controllers\Controller;
-use App\Services\CheckoutService;
 use App\Services\MidtransService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,7 +16,7 @@ use Throwable;
 class PaymentCallbackController extends Controller
 {
     public function __construct(
-        private readonly CheckoutService $checkoutService,
+        private readonly HandlePaymentCallbackAction $handlePaymentCallbackAction,
         private readonly MidtransService $midtransService
     ) {
     }
@@ -37,7 +37,7 @@ class PaymentCallbackController extends Controller
         }
 
         try {
-            $order = $this->checkoutService->handlePaymentCallback($payload);
+            $order = $this->handlePaymentCallbackAction->execute($payload);
 
             return response()->json([
                 'success' => true,
@@ -72,4 +72,3 @@ class PaymentCallbackController extends Controller
         }
     }
 }
-

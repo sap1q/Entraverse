@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api;
 
+use App\Actions\Checkout\SyncPaymentStatusAction;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\SalesOrder;
@@ -11,7 +12,6 @@ use App\Models\SalesOrderItem;
 use App\Models\TradeInTransaction;
 use App\Models\TradeInTransactionPhoto;
 use App\Models\User;
-use App\Services\CheckoutService;
 use App\Services\MidtransService;
 use App\Services\RajaOngkirService;
 use Carbon\Carbon;
@@ -65,7 +65,7 @@ class CustomerOrderController extends Controller
 
     public function __construct(
         private readonly MidtransService $midtransService,
-        private readonly CheckoutService $checkoutService,
+        private readonly SyncPaymentStatusAction $syncPaymentStatusAction,
         private readonly RajaOngkirService $rajaOngkirService
     )
     {
@@ -940,7 +940,7 @@ class CustomerOrderController extends Controller
     private function syncPendingPayment(SalesOrder $order): SalesOrder
     {
         try {
-            return $this->checkoutService->syncPendingPaymentStatus($order);
+            return $this->syncPaymentStatusAction->execute($order);
         } catch (Throwable) {
             return $order->fresh(['items.product', 'invoice']) ?? $order;
         }
