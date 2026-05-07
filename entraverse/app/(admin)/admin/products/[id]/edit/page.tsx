@@ -82,6 +82,18 @@ const firstDefined = (row: RawMatrixRow, keys: string[]): unknown => {
   return undefined;
 };
 
+const resolveNonNegativeWithFallback = (value: unknown, fallback = 0): number => {
+  if (value === undefined || value === null) {
+    return Math.max(0, toNumber(fallback));
+  }
+
+  if (typeof value === "string" && value.trim() === "") {
+    return Math.max(0, toNumber(fallback));
+  }
+
+  return Math.max(0, toNumber(value));
+};
+
 const toSlug = (value: string): string =>
   value
     .toLowerCase()
@@ -225,10 +237,9 @@ const buildVariantCombinationsForPrefill = (variants: VariantDefinition[]) => {
 const mapPricingRow = (row: RawMatrixRow, fallbackWeight = 0, fallbackPurchasePrice = 0): MatrixPricing => ({
   ...DEFAULT_MATRIX_ROW,
   stock: Math.max(0, toNumber(firstDefined(row, ["stock"]))),
-  purchasePrice: Math.max(
-    0,
-    toNumber(firstDefined(row, ["purchase_price", "purchasePrice", "purchase_price_idr", "purchasePriceIdr", "cost"])) ||
-      Math.max(0, toNumber(fallbackPurchasePrice))
+  purchasePrice: resolveNonNegativeWithFallback(
+    firstDefined(row, ["purchase_price", "purchasePrice", "purchase_price_idr", "purchasePriceIdr", "cost"]),
+    fallbackPurchasePrice
   ),
   currency: (toText(firstDefined(row, ["currency"])) as MatrixPricing["currency"]) || DEFAULT_MATRIX_ROW.currency,
   exchangeRate: Math.max(0, toNumber(firstDefined(row, ["exchange_rate", "exchangeRate"]))),
@@ -246,9 +257,9 @@ const mapPricingRow = (row: RawMatrixRow, fallbackWeight = 0, fallbackPurchasePr
   shopeePrice: Math.max(0, toNumber(firstDefined(row, ["shopee_price", "shopeePrice"]))),
   shopeeFee: Math.max(0, toNumber(firstDefined(row, ["shopee_fee", "shopeeFee"]))),
   skuSeller: toText(firstDefined(row, ["sku_seller", "skuSeller"])),
-  itemWeight: Math.max(
-    0,
-    toNumber(firstDefined(row, ["item_weight", "itemWeight", "weight"])) || Math.max(0, toNumber(fallbackWeight))
+  itemWeight: resolveNonNegativeWithFallback(
+    firstDefined(row, ["item_weight", "itemWeight", "weight"]),
+    fallbackWeight
   ),
   avgSalesA: Math.max(0, toNumber(firstDefined(row, ["avg_sales_a", "avgSalesA"]))),
   stockoutDateA: toText(firstDefined(row, ["stockout_date_a", "stockoutDateA"])) || DEFAULT_MATRIX_ROW.stockoutDateA,

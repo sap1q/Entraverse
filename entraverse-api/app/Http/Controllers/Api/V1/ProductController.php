@@ -10,6 +10,8 @@ use App\Http\Resources\ProductResource;
 use App\Models\Product;
 use App\Services\ProductService;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -96,7 +98,11 @@ class ProductController extends Controller
 
     public function store(StoreProductRequest $request)
     {
-        $product = $this->service->store($request->validated(), $request->file('images', []));
+        $product = $this->service->store(
+            $request->validated(),
+            $request->file('images', []),
+            $this->resolveVariantImageFiles($request)
+        );
         $request->attributes->set('include_price_breakdown', true);
         return (new ProductResource($product))->response()->setStatusCode(201);
     }
@@ -105,7 +111,12 @@ class ProductController extends Controller
     {
         $request->attributes->set('include_price_breakdown', true);
         return new ProductResource(
-            $this->service->update($product, $request->validated(), $request->file('images', []))
+            $this->service->update(
+                $product,
+                $request->validated(),
+                $request->file('images', []),
+                $this->resolveVariantImageFiles($request)
+            )
         );
     }
 
@@ -140,5 +151,20 @@ class ProductController extends Controller
         }
 
         return $filters;
+    }
+
+    /**
+     * @return array<string, UploadedFile>
+     */
+    private function resolveVariantImageFiles(Request $request): array
+    {
+        /** @var Collection<string, UploadedFile> $files */
+        $files = collect($request->allFiles())
+            ->filter(fn (mixed $file, string $key): bool => $file instanceof UploadedFile && Str::startsWith($key, 'variant_image_file__'))
+            ->mapWithKeys(fn (UploadedFile $file, string $key): array => [
+                Str::after($key, 'variant_image_file__') => $file,
+            ]);
+
+        return $files->all();
     }
 }

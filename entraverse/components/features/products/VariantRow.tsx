@@ -141,8 +141,8 @@ export default function VariantRow({
   };
 
   return (
-    <tr onClick={onSelect} className={`border-t border-slate-100 align-top ${selected ? "bg-blue-50/40" : ""}`}>
-      <td className="sticky left-0 z-10 min-w-[280px] bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-[4px_0_8px_rgba(0,0,0,0.04)]">
+    <tr onClick={onSelect} className={`border-t border-slate-100 align-middle ${selected ? "bg-blue-50/40" : ""}`}>
+      <td className="sticky left-0 z-10 min-w-[280px] bg-white px-3 py-3 text-sm font-semibold text-slate-700 shadow-[4px_0_8px_rgba(0,0,0,0.04)]">
         <div>
           <div className="rounded-2xl border border-transparent bg-white p-3">
             <div className="flex items-center gap-3">
@@ -204,9 +204,7 @@ export default function VariantRow({
                     {warrantyLabel}
                   </span>
                 ) : null}
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  {hasVariantImage ? "Foto tersimpan" : "Hover atau klik untuk upload"}
-                </p>
+                {hasVariantImage ? <p className="mt-1 text-xs leading-5 text-slate-500">Foto tersimpan</p> : null}
                 {variantImageError ? (
                   <p className="mt-1.5 text-[10px] font-normal text-rose-600">{variantImageError}</p>
                 ) : null}
@@ -295,10 +293,11 @@ export default function VariantRow({
         <input
           type="number"
           min={0}
-          className={`${inputBase} px-2 text-center`}
+          readOnly
+          disabled
+          className="h-10 w-full appearance-none rounded-md border border-slate-200 bg-slate-100 px-2 text-center text-sm text-slate-500 outline-none disabled:cursor-not-allowed disabled:opacity-100 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
           value={row.stock}
-          onFocus={handleNumericFocus}
-          onChange={(e) => onUpdateField(combo.key, "stock", Number(e.target.value))}
+          title="Stok mengikuti perhitungan sistem"
         />
       </td>
       <td className="min-w-[150px] px-2 py-2"><input className={inputBase} value={row.skuSeller} onChange={(e) => onUpdateField(combo.key, "skuSeller", e.target.value)} /></td>

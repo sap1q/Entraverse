@@ -247,7 +247,7 @@ export default function CategoryTable({
               onParamChange({ minMargin: event.target.value ? Number(event.target.value) : undefined, page: 1 })
             }
             className="h-11 rounded-xl border border-slate-200 px-3 text-sm"
-            placeholder="Margin min"
+            placeholder="Margin keuntungan min"
           />
           <input
             type="number"
@@ -257,7 +257,7 @@ export default function CategoryTable({
               onParamChange({ maxMargin: event.target.value ? Number(event.target.value) : undefined, page: 1 })
             }
             className="h-11 rounded-xl border border-slate-200 px-3 text-sm"
-            placeholder="Margin max"
+            placeholder="Margin keuntungan max"
           />
           <label className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 text-sm text-slate-600">
             <input
@@ -314,7 +314,7 @@ export default function CategoryTable({
               <th className="border-b border-slate-200 px-3 py-3 text-left text-xs font-bold uppercase text-slate-500">Fee</th>
               <th className="border-b border-slate-200 px-3 py-3 text-left text-xs font-bold uppercase text-slate-500">
                 <button type="button" onClick={() => onToggleSort("min_margin")} className="inline-flex items-center gap-1">
-                  Margin {sortIcon(params.sortBy === "min_margin", params.sortOrder)}
+                  Margin Keuntungan {sortIcon(params.sortBy === "min_margin", params.sortOrder)}
                 </button>
               </th>
               <th className="border-b border-slate-200 px-3 py-3 text-left text-xs font-bold uppercase text-slate-500">Activity Log</th>
@@ -401,7 +401,7 @@ export default function CategoryTable({
                     </td>
                     <td className="border-b border-gray-100 px-3 py-4 align-top">
                       <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-700">
-                        {formatNumber(category.min_margin)}%
+                        {formatNumber(category.margin_percent ?? category.min_margin)}%
                       </span>
                     </td>
                     <td className="border-b border-gray-100 px-3 py-4 align-top text-xs leading-5 text-slate-600">
@@ -474,7 +474,9 @@ export default function CategoryTable({
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="text-sm font-semibold text-slate-800">{category.name}</p>
-                    <p className="mt-1 text-xs text-slate-500">Margin: {formatNumber(category.min_margin)}%</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Margin Keuntungan: {formatNumber(category.margin_percent ?? category.min_margin)}%
+                    </p>
                   </div>
                   <input
                     type="checkbox"

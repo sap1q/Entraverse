@@ -14,6 +14,7 @@ import {
   loadAdminState,
   normalizeStoredProduct,
   paginate,
+  repriceProductsForCategory,
   saveAdminState,
   sortByUpdatedAtDesc,
   uploadAdminAsset,
@@ -881,7 +882,8 @@ const createOrUpdateCategory = async (request: NextRequest, categoryId?: string)
   const categories = existing
     ? state.categories.map((item) => (item.id === existing.id ? category : item))
     : [...state.categories, category];
-  await saveAdminState({ ...state, categories });
+  const products = repriceProductsForCategory({ ...state, categories }, category);
+  await saveAdminState({ ...state, categories, products });
   return json({
     success: true,
     message: `Kategori disimpan oleh ${admin.name}.`,

@@ -820,6 +820,8 @@ export default function VariantTable({
               {headers.map((header, index) => {
                 const isSticky = index === 0;
                 const isPriceChannelHeader = priceChannelHeaders.has(header);
+                const isCenteredHeader = header === "Stok";
+                const headerAlignmentClass = isSticky ? "text-left" : "text-center";
                 const renderedHeader = (() => {
                   if (header === "Harga Jual Offline") {
                     return (
@@ -862,7 +864,7 @@ export default function VariantTable({
                 return (
                   <th
                     key={header}
-                    className={`border-b border-slate-200 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 ${isPriceChannelHeader ? "whitespace-nowrap text-center" : ""} ${isSticky ? "sticky left-0 z-20 bg-slate-50 shadow-[4px_0_8px_rgba(0,0,0,0.04)]" : ""}`}
+                    className={`border-b border-slate-200 px-3 py-3 ${headerAlignmentClass} text-xs font-semibold uppercase tracking-wide text-slate-500 ${isPriceChannelHeader || isCenteredHeader ? "whitespace-nowrap" : ""} ${isSticky ? "sticky left-0 z-20 bg-slate-50 shadow-[4px_0_8px_rgba(0,0,0,0.04)]" : ""}`}
                   >
                     {renderedHeader}
                   </th>

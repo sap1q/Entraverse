@@ -525,27 +525,74 @@ class ProductService
 
     /**
      * @param  array<int, UploadedFile>  $images
+     * @param  array<string, UploadedFile>  $variantImageFiles
      */
-    public function store(array $validated, array $images = []): Product
+    public function store(array $validated, array $images = [], array $variantImageFiles = []): Product
     {
-        $payload = $this->buildPayload($validated, null, $images);
+        $payload = $this->buildPayload($validated, null, $images, $variantImageFiles);
         return Product::query()->create($payload);
     }
 
     /**
      * @param  array<int, UploadedFile>  $images
+     * @param  array<string, UploadedFile>  $variantImageFiles
      */
-    public function update(Product $product, array $validated, array $images = []): Product
+    public function update(Product $product, array $validated, array $images = [], array $variantImageFiles = []): Product
     {
-        $payload = $this->buildPayload($validated, $product, $images);
+        $payload = $this->buildPayload($validated, $product, $images, $variantImageFiles);
         $product->update($payload);
         return $product->refresh();
     }
 
+    public function repriceProductsForCategory(Category $category): int
+    {
+        $categoryName = $this->cleanText((string) $category->name);
+        $normalizedCategoryName = strtolower($categoryName);
+
+        $products = Product::query()
+            ->where(function (Builder $query) use ($category, $normalizedCategoryName): void {
+                $query->where('category_id', $category->id);
+
+                if ($normalizedCategoryName !== '') {
+                    $query->orWhereRaw('LOWER(category) = ?', [$normalizedCategoryName]);
+                }
+            })
+            ->get();
+
+        $updatedCount = 0;
+
+        foreach ($products as $product) {
+            $recalculatedVariantPricing = $this->recalculateVariantPricing(
+                is_array($product->variant_pricing) ? $product->variant_pricing : [],
+                $category
+            );
+
+            $nextCategoryName = $categoryName !== '' ? $categoryName : (string) $product->category;
+            $shouldUpdateProduct = $recalculatedVariantPricing !== (is_array($product->variant_pricing) ? $product->variant_pricing : [])
+                || (string) ($product->category_id ?? '') !== (string) $category->id
+                || (string) ($product->category ?? '') !== $nextCategoryName;
+
+            if (! $shouldUpdateProduct) {
+                continue;
+            }
+
+            $product->forceFill([
+                'category_id' => (string) $category->id,
+                'category' => $nextCategoryName,
+                'variant_pricing' => $recalculatedVariantPricing,
+            ])->save();
+
+            $updatedCount++;
+        }
+
+        return $updatedCount;
+    }
+
     /**
      * @param  array<int, UploadedFile>  $uploadedImages
+     * @param  array<string, UploadedFile>  $variantImageFiles
      */
-    private function buildPayload(array $validated, ?Product $product, array $uploadedImages): array
+    private function buildPayload(array $validated, ?Product $product, array $uploadedImages, array $variantImageFiles = []): array
     {
         $existingInventory = is_array($product?->inventory) ? $product->inventory : [];
         $existingJurnalMetadata = is_array($product?->jurnal_metadata) ? $product->jurnal_metadata : [];
@@ -560,8 +607,10 @@ class ProductService
         }
         $inventory = $this->normalizeInventory($inventory);
 
+        $uploadedVariantImageUrls = $this->resolveVariantImageUploads($variantImageFiles);
         $variantPricing = $this->normalizeVariantPricing(
-            $validated['variant_pricing'] ?? ($product?->variant_pricing ?? [])
+            $validated['variant_pricing'] ?? ($product?->variant_pricing ?? []),
+            $uploadedVariantImageUrls
         );
 
         $calculatedStock = $this->calculateTotalStock(
@@ -616,7 +665,7 @@ class ProductService
             ];
         }
 
-        if ($this->shouldLockProductMediaState($validated, $uploadedImages)) {
+        if ($this->shouldLockProductMediaState($validated, $uploadedImages, $variantImageFiles)) {
             $jurnalMetadata['local_media_state'] = [
                 ...((is_array($existingJurnalMetadata['local_media_state'] ?? null)
                     ? $existingJurnalMetadata['local_media_state']
@@ -670,12 +719,31 @@ class ProductService
     /**
      * @param  array<int, UploadedFile>  $uploadedImages
      */
-    private function shouldLockProductMediaState(array $validated, array $uploadedImages): bool
+    private function shouldLockProductMediaState(array $validated, array $uploadedImages, array $variantImageFiles = []): bool
     {
-        return array_key_exists('photos', $validated) || $uploadedImages !== [];
+        if (array_key_exists('photos', $validated) || $uploadedImages !== [] || $variantImageFiles !== []) {
+            return true;
+        }
+
+        $variantPricing = is_array($validated['variant_pricing'] ?? null) ? $validated['variant_pricing'] : [];
+        foreach ($variantPricing as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            if (
+                array_key_exists('variant_image', $item)
+                || array_key_exists('shared_variant_image_key', $item)
+                || array_key_exists('variant_image_key', $item)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
-    private function normalizeVariantPricing(mixed $value): array
+    private function normalizeVariantPricing(mixed $value, array $uploadedVariantImageUrls = []): array
     {
         if (! is_array($value)) {
             return [];
@@ -702,6 +770,22 @@ class ProductService
             $item['purchase_price'] = (float) ($item['purchase_price'] ?? 0);
             $item['purchase_price_idr'] = (float) ($item['purchase_price_idr'] ?? 0);
             $item['margin_percent'] = (float) ($item['margin_percent'] ?? 0);
+
+            $sharedVariantImageKey = $this->cleanText((string) ($item['shared_variant_image_key'] ?? $item['variant_image_key'] ?? ''));
+            if ($sharedVariantImageKey !== '') {
+                $item['shared_variant_image_key'] = $sharedVariantImageKey;
+            }
+
+            $variantImage = trim((string) ($item['variant_image'] ?? ''));
+            if ($sharedVariantImageKey !== '' && array_key_exists($sharedVariantImageKey, $uploadedVariantImageUrls)) {
+                $variantImage = $uploadedVariantImageUrls[$sharedVariantImageKey];
+            }
+
+            if ($this->isPersistableMediaPath($variantImage)) {
+                $item['variant_image'] = $variantImage;
+            } else {
+                unset($item['variant_image']);
+            }
 
             $normalized[] = $this->normalizeArray($item);
         }
@@ -818,11 +902,11 @@ class ProductService
             $item['shipping_cost'] = (float) round($fixedCost);
             $item['margin_percent'] = (float) round($marginPercent, 4);
             $item['purchase_price_idr'] = (float) round($purchasePriceIdr);
-            $item['offline_price'] = (float) $this->applyPriceRounding($offlineWithWarranty);
-            $item['entraverse_price'] = (float) $this->applyPriceRounding($entraverseWithWarranty);
-            $item['tokopedia_price'] = (float) $this->applyPriceRounding($tokopediaWithWarranty);
-            $item['tiktok_price'] = (float) $this->applyPriceRounding($tokopediaWithWarranty);
-            $item['shopee_price'] = (float) $this->applyPriceRounding($shopeeWithWarranty);
+            $item['offline_price'] = (float) $this->applyNearestPriceRounding($offlineWithWarranty);
+            $item['entraverse_price'] = (float) $this->applyCeilPriceRounding($entraverseWithWarranty);
+            $item['tokopedia_price'] = (float) $this->applyNearestPriceRounding($tokopediaWithWarranty);
+            $item['tiktok_price'] = (float) $this->applyNearestPriceRounding($tokopediaWithWarranty);
+            $item['shopee_price'] = (float) $this->applyNearestPriceRounding($shopeeWithWarranty);
             $item['tokopedia_fee'] = (float) $tokopediaFee['percent_display'];
             $item['tiktok_fee'] = (float) $tokopediaFee['percent_display'];
             $item['shopee_fee'] = (float) $shopeeFee['percent_display'];
@@ -1007,23 +1091,42 @@ class ProductService
         return (float) round((float) $digits);
     }
 
-    private function applyPriceRounding(float $value): float
+    private function applyNearestPriceRounding(float $value): float
+    {
+        $safeValue = max(0, $value);
+        [$step, $psychologicalCut] = $this->resolvePriceRoundingBucket($safeValue);
+
+        return max(0, (round($safeValue / $step) * $step) - $psychologicalCut);
+    }
+
+    private function applyCeilPriceRounding(float $value): float
+    {
+        $safeValue = max(0, $value);
+        [$step, $psychologicalCut] = $this->resolvePriceRoundingBucket($safeValue);
+
+        return max(0, (ceil($safeValue / $step) * $step) - $psychologicalCut);
+    }
+
+    /**
+     * @return array{0: float, 1: float}
+     */
+    private function resolvePriceRoundingBucket(float $value): array
     {
         $safeValue = max(0, $value);
 
         if ($safeValue >= 500000) {
-            return max(0, (round($safeValue / 50000) * 50000) - 1000);
+            return [50000.0, 1000.0];
         }
 
         if ($safeValue >= 250000) {
-            return max(0, (round($safeValue / 10000) * 10000) - 1000);
+            return [10000.0, 1000.0];
         }
 
         if ($safeValue >= 100000) {
-            return max(0, (round($safeValue / 5000) * 5000) - 1000);
+            return [5000.0, 1000.0];
         }
 
-        return max(0, (round($safeValue / 1000) * 1000) - 100);
+        return [1000.0, 100.0];
     }
 
     private function defaultWarrantyPricingComponent(): array
@@ -1472,6 +1575,31 @@ class ProductService
     }
 
     /**
+     * @param  array<string, UploadedFile>  $variantImageFiles
+     * @return array<string, string>
+     */
+    private function resolveVariantImageUploads(array $variantImageFiles): array
+    {
+        $mappedUploads = [];
+
+        foreach ($variantImageFiles as $key => $file) {
+            if (! $file instanceof UploadedFile) {
+                continue;
+            }
+
+            $normalizedKey = $this->cleanText((string) $key);
+            if ($normalizedKey === '') {
+                continue;
+            }
+
+            $path = $file->store('products/variants', 'public');
+            $mappedUploads[$normalizedKey] = '/storage/' . ltrim($path, '/');
+        }
+
+        return $mappedUploads;
+    }
+
+    /**
      * @param  array<int, UploadedFile>  $uploadedImages
      * @param  array<int|string, mixed>  $existingPhotos
      * @return array<int, array<string, mixed>>
@@ -1702,6 +1830,16 @@ class ProductService
     private function cleanText(string $value): string
     {
         return trim(strip_tags($value));
+    }
+
+    private function isPersistableMediaPath(string $value): bool
+    {
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return false;
+        }
+
+        return ! str_starts_with($trimmed, 'blob:') && ! str_starts_with($trimmed, 'data:');
     }
 
     private function cleanDescription(string $value): ?string

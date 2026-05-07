@@ -192,7 +192,7 @@ export default function CategoryForm({
           </label>
 
           <label className="space-y-1">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Min Margin (%)</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Margin Keuntungan</span>
             <input
               key={`${mode}-${category?.id ?? "new"}-min-margin`}
               type="text"
