@@ -186,6 +186,233 @@ const parseJsonField = <T>(value: FormDataEntryValue | null, fallback: T): T => 
   }
 };
 
+const parseRupiahAmount = (value: unknown): number => {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.max(0, Math.round(value));
+  if (typeof value !== "string") return 0;
+  const digits = value.replace(/\D+/g, "");
+  if (!digits) return 0;
+  const parsed = Number(digits);
+  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
+};
+
+const normalizeValueType = (value: unknown): "percent" | "amount" => {
+  if (typeof value !== "string") return "percent";
+  const normalized = value.trim().toLowerCase();
+  return normalized === "amount" || normalized === "rp" || normalized === "rupiah" ? "amount" : "percent";
+};
+
+const hasFeeComponents = (channel: FeeChannel | null | undefined): boolean => {
+  const components = channel?.components ?? [];
+
+  return components.some((component) => {
+    const label = toString(component.label).trim();
+    const valueType = normalizeValueType(component.valueType);
+    const value = valueType === "amount" ? parseRupiahAmount(component.value) : Math.max(0, toNumber(component.value, 0));
+    const min = parseRupiahAmount(component.min);
+    const max = parseRupiahAmount(component.max);
+
+    return label !== "" || value > 0 || min > 0 || max > 0;
+  });
+};
+
+const resolveFeeSummaryPercent = (channel: FeeChannel | null | undefined): number => {
+  if (!channel) return 0;
+
+  const candidates = [
+    (channel as FeeChannel & Record<string, unknown>).percent,
+    (channel as FeeChannel & Record<string, unknown>).rate,
+    (channel as FeeChannel & Record<string, unknown>).percentage,
+    (channel as FeeChannel & Record<string, unknown>).total_percent,
+    (channel as FeeChannel & Record<string, unknown>).totalPercent,
+    (channel as FeeChannel & Record<string, unknown>).summary,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "number" || typeof candidate === "string") {
+      const resolved = Math.max(0, toNumber(candidate, 0));
+      if (resolved > 0) return resolved;
+    }
+  }
+
+  return 0;
+};
+
+const pickFeeChannel = (
+  fees: StoredCategory["fees"],
+  keys: Array<keyof StoredCategory["fees"]>
+): FeeChannel => {
+  let fallback: FeeChannel | null = null;
+
+  for (const key of keys) {
+    const candidate = fees[key];
+    if (!candidate) continue;
+    fallback ??= candidate;
+    if (hasFeeComponents(candidate)) return candidate;
+  }
+
+  return fallback ?? EMPTY_CHANNEL();
+};
+
+const calculateFeeTotals = (channel: FeeChannel, purchasePriceIdr: number) => {
+  const components = channel.components ?? [];
+  const safePurchasePrice = Math.max(0, purchasePriceIdr);
+  let fixedTotal = 0;
+  let percentTotal = 0;
+
+  if (components.length === 0) {
+    const summaryPercent = resolveFeeSummaryPercent(channel);
+
+    return {
+      fixedTotal: 0,
+      percentTotal: summaryPercent / 100,
+      percentDisplay: summaryPercent,
+    };
+  }
+
+  components.forEach((component) => {
+    const valueType = normalizeValueType(component.valueType);
+    const value = valueType === "amount" ? parseRupiahAmount(component.value) : Math.max(0, toNumber(component.value, 0));
+    const minValue = parseRupiahAmount(component.min);
+    const maxValue = parseRupiahAmount(component.max);
+
+    if (valueType === "amount") {
+      let fee = value;
+      if (minValue > 0) fee = Math.max(fee, minValue);
+      if (maxValue > 0) fee = Math.min(fee, maxValue);
+      fixedTotal += Math.max(0, fee);
+      return;
+    }
+
+    let effectiveRate = value / 100;
+
+    if (safePurchasePrice > 0) {
+      if (maxValue > 0) effectiveRate = Math.min(effectiveRate, maxValue / safePurchasePrice);
+      if (minValue > 0) effectiveRate = Math.max(effectiveRate, minValue / safePurchasePrice);
+    }
+
+    percentTotal += Math.max(0, effectiveRate);
+  });
+
+  return {
+    fixedTotal: Math.round(fixedTotal),
+    percentTotal,
+    percentDisplay: percentTotal * 100,
+  };
+};
+
+const calculateSellingPrice = (
+  purchasePriceIdr: number,
+  fixedFeeAmount: number,
+  marginRate: number,
+  platformFeePercent: number
+) => {
+  const safePurchasePrice = Math.max(0, purchasePriceIdr);
+  const safeFixedFee = Math.max(0, fixedFeeAmount);
+  const denominator = 1 - Math.max(0, marginRate) - Math.max(0, platformFeePercent);
+
+  if (denominator <= 0) {
+    return safePurchasePrice + safeFixedFee;
+  }
+
+  return (safePurchasePrice + safeFixedFee) / denominator;
+};
+
+const resolvePriceRoundingBucket = (value: number): [number, number] => {
+  const safeValue = Math.max(0, value);
+
+  if (safeValue >= 500_000) return [50_000, 1_000];
+  if (safeValue >= 250_000) return [10_000, 1_000];
+  if (safeValue >= 100_000) return [5_000, 1_000];
+  return [1_000, 100];
+};
+
+const applyNearestPriceRounding = (value: number): number => {
+  const safeValue = Math.max(0, value);
+  const [step, psychologicalCut] = resolvePriceRoundingBucket(safeValue);
+  return Math.max(0, Math.round(safeValue / step) * step - psychologicalCut);
+};
+
+const applyCeilPriceRounding = (value: number): number => {
+  const safeValue = Math.max(0, value);
+  const [step, psychologicalCut] = resolvePriceRoundingBucket(safeValue);
+  return Math.max(0, Math.ceil(safeValue / step) * step - psychologicalCut);
+};
+
+const extractWarrantyOption = (row: Record<string, unknown>): string => {
+  const options = asObject(row.options);
+
+  for (const [name, value] of Object.entries(options)) {
+    if (name.trim().toLowerCase().includes("garansi")) {
+      const normalizedValue = toString(value).trim();
+      if (normalizedValue) return normalizedValue;
+    }
+  }
+
+  const label = toString(row.label).trim();
+  if (label) {
+    const match = label.match(/garansi:\s*([^/]+)/i);
+    if (match?.[1]) return match[1].trim();
+  }
+
+  return "";
+};
+
+const applyWarrantyMultiplier = (warrantyOption: string, basePrice: number): number => {
+  const normalized = warrantyOption.trim().toLowerCase();
+  if (!normalized || normalized.includes("tanpa")) return basePrice;
+  if (/(^|[^0-9])1\s*tahun/.test(normalized) || normalized.includes("1th") || normalized.includes("1 th")) {
+    return basePrice * 1.06;
+  }
+
+  return basePrice;
+};
+
+const recalculateVariantPricingForCategory = (
+  variantPricing: Array<Record<string, unknown>>,
+  category: StoredCategory
+): Array<Record<string, unknown>> => {
+  const marginPercent = Math.max(0, toNumber(category.margin_percent ?? category.min_margin, 0));
+  const tokopediaChannel = pickFeeChannel(category.fees, ["tokopedia", "tokopedia_tiktok", "marketplace"]);
+  const shopeeChannel = pickFeeChannel(category.fees, ["shopee"]);
+  const entraverseChannel = pickFeeChannel(category.fees, ["entraverse"]);
+
+  return variantPricing.map((item) => {
+    const row = asObject(item);
+    const purchasePrice = Math.max(0, toNumber(row.purchase_price ?? row.purchasePrice, 0));
+    const exchangeValue = Math.max(0, toNumber(row.exchange_value ?? row.exchangeValue ?? row.exchange_rate ?? row.exchangeRate, 0));
+    const arrivalCost = Math.max(0, toNumber(row.arrival_cost ?? row.arrivalCost, 0));
+    const shippingCost = Math.max(0, toNumber(row.shipping_cost ?? row.shippingCost, 0));
+    const purchasePriceIdr = Math.round((purchasePrice * exchangeValue) + arrivalCost);
+    const warrantyOption = extractWarrantyOption(row);
+
+    const entraverseFee = calculateFeeTotals(entraverseChannel, purchasePriceIdr);
+    const tokopediaFee = calculateFeeTotals(tokopediaChannel, purchasePriceIdr);
+    const shopeeFee = calculateFeeTotals(shopeeChannel, purchasePriceIdr);
+
+    const offlineBase = calculateSellingPrice(purchasePriceIdr, 0, marginPercent / 100, 0);
+    const entraverseBase = calculateSellingPrice(purchasePriceIdr, entraverseFee.fixedTotal, marginPercent / 100, entraverseFee.percentTotal);
+    const tokopediaBase = calculateSellingPrice(purchasePriceIdr, tokopediaFee.fixedTotal, marginPercent / 100, tokopediaFee.percentTotal);
+    const shopeeBase = calculateSellingPrice(purchasePriceIdr, shopeeFee.fixedTotal, marginPercent / 100, shopeeFee.percentTotal);
+
+    return {
+      ...row,
+      margin_percent: marginPercent,
+      exchange_rate: exchangeValue,
+      arrival_cost: Math.round(arrivalCost),
+      shipping_cost: Math.round(shippingCost),
+      purchase_price_idr: Math.round(purchasePriceIdr),
+      offline_price: applyNearestPriceRounding(applyWarrantyMultiplier(warrantyOption, offlineBase)),
+      entraverse_price: applyCeilPriceRounding(applyWarrantyMultiplier(warrantyOption, entraverseBase)),
+      tokopedia_price: applyNearestPriceRounding(applyWarrantyMultiplier(warrantyOption, tokopediaBase)),
+      tiktok_price: applyNearestPriceRounding(applyWarrantyMultiplier(warrantyOption, tokopediaBase)),
+      shopee_price: applyNearestPriceRounding(applyWarrantyMultiplier(warrantyOption, shopeeBase)),
+      tokopedia_fee: Number(tokopediaFee.percentDisplay.toFixed(4)),
+      tiktok_fee: Number(tokopediaFee.percentDisplay.toFixed(4)),
+      shopee_fee: Number(shopeeFee.percentDisplay.toFixed(4)),
+    };
+  });
+};
+
 const readStreamAsText = async (stream: ReadableStream<Uint8Array>) =>
   new Response(stream).text();
 
@@ -538,10 +765,38 @@ export const resolveCategoryRef = (state: AdminState, categoryId: string | null,
   };
 };
 
+export const repriceProductsForCategory = (state: AdminState, category: StoredCategory): StoredProduct[] => {
+  const normalizedCategoryName = category.name.trim().toLowerCase();
+
+  return state.products.map((product) => {
+    const matchesCategory =
+      product.category_id === category.id ||
+      (normalizedCategoryName !== "" && product.category?.trim().toLowerCase() === normalizedCategoryName);
+
+    if (!matchesCategory) {
+      return product;
+    }
+
+    return {
+      ...product,
+      category_id: category.id,
+      category: category.name,
+      category_ref: {
+        id: category.id,
+        name: category.name,
+        slug: category.slug,
+      },
+      variant_pricing: recalculateVariantPricingForCategory(product.variant_pricing, category),
+      updated_at: nowIso(),
+    };
+  });
+};
+
 export const normalizeStoredProduct = (state: AdminState, input: {
   existing?: StoredProduct | null;
   body: FormData | Record<string, unknown>;
   uploadedPhotoUrls?: string[];
+  variantImageUrls?: Record<string, string>;
 }) => {
   const isFormData = input.body instanceof FormData;
   const source = isFormData ? {} : (input.body as Record<string, unknown>);
@@ -581,7 +836,21 @@ export const normalizeStoredProduct = (state: AdminState, input: {
   const variantPricing = parseJsonField<Array<Record<string, unknown>>>(
     isFormData ? (input.body as FormData).get("variant_pricing") : null,
     existing?.variant_pricing ?? []
-  );
+  ).map((row) => {
+    const source = asObject(row);
+    const sharedVariantImageKey = toString(source.shared_variant_image_key ?? source.variant_image_key).trim();
+    const variantImageFromUpload = sharedVariantImageKey ? input.variantImageUrls?.[sharedVariantImageKey] : null;
+
+    if (!variantImageFromUpload) {
+      return source;
+    }
+
+    return {
+      ...source,
+      shared_variant_image_key: sharedVariantImageKey,
+      variant_image: variantImageFromUpload,
+    };
+  });
   const inventory = parseJsonField<Record<string, unknown>>(
     isFormData ? (input.body as FormData).get("inventory") : null,
     existing?.inventory ?? {}

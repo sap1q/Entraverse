@@ -14,6 +14,7 @@ import {
   loadAdminState,
   normalizeStoredProduct,
   paginate,
+  repriceProductsForCategory,
   saveAdminState,
   sortByUpdatedAtDesc,
   uploadAdminAsset,
@@ -298,6 +299,17 @@ const assertAdminSession = (request: NextRequest) => decodeMockAdminToken(reques
 
 const getFiles = (formData: FormData, key: string): File[] =>
   formData.getAll(key).filter((entry): entry is File => entry instanceof File && entry.size > 0);
+
+const getVariantImageFiles = (formData: FormData) =>
+  Array.from(formData.entries())
+    .filter(
+      (entry): entry is [string, File] =>
+        entry[0].startsWith("variant_image_file__") && entry[1] instanceof File && entry[1].size > 0
+    )
+    .map(([key, file]) => ({
+      key: key.replace("variant_image_file__", ""),
+      file,
+    }));
 
 const respondAdminProfile = (request: NextRequest) => {
   const admin = assertAdminSession(request);
@@ -870,7 +882,8 @@ const createOrUpdateCategory = async (request: NextRequest, categoryId?: string)
   const categories = existing
     ? state.categories.map((item) => (item.id === existing.id ? category : item))
     : [...state.categories, category];
-  await saveAdminState({ ...state, categories });
+  const products = repriceProductsForCategory({ ...state, categories }, category);
+  await saveAdminState({ ...state, categories, products });
   return json({
     success: true,
     message: `Kategori disimpan oleh ${admin.name}.`,
@@ -976,10 +989,17 @@ const createOrUpdateProduct = async (request: NextRequest, productId?: string) =
     uploadedPhotoUrls.push(uploaded.url);
   }
 
+  const variantImageUrls: Record<string, string> = {};
+  for (const entry of getVariantImageFiles(formData)) {
+    const uploaded = await uploadAdminAsset("products/variants", entry.file);
+    variantImageUrls[entry.key] = uploaded.url;
+  }
+
   const product = normalizeStoredProduct(state, {
     existing,
     body: formData,
     uploadedPhotoUrls,
+    variantImageUrls,
   });
 
   const products = existing

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Models\Admin;
 use App\Models\Category;
+use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -165,6 +166,87 @@ test('can update existing category', function (): void {
         'id' => $category->id,
         'name' => 'Updated Category',
     ]);
+});
+
+test('updating category reprices linked products with channel specific rounding', function (): void {
+    Sanctum::actingAs($this->admin, ['*']);
+
+    $category = Category::factory()->create([
+        'name' => 'Virtual Reality',
+        'margin_percent' => 5,
+        'min_margin' => 5,
+        'fees' => [
+            'entraverse' => [
+                'components' => [
+                    ['label' => 'Fee Entraverse', 'valueType' => 'percent', 'value' => 4],
+                ],
+            ],
+            'tokopedia' => [
+                'components' => [
+                    ['label' => 'Admin Tokopedia', 'valueType' => 'percent', 'value' => 12.53],
+                    ['label' => 'Layanan Tokopedia', 'valueType' => 'amount', 'value' => 1250],
+                ],
+            ],
+            'shopee' => ['components' => []],
+            'marketplace' => ['components' => []],
+            'tokopedia_tiktok' => ['components' => []],
+        ],
+    ]);
+
+    $product = Product::factory()->create([
+        'category_id' => $category->id,
+        'category' => $category->name,
+        'variant_pricing' => [
+            [
+                'label' => 'Garansi: Tanpa Garansi / Memori: 128 GB',
+                'options' => [
+                    'Garansi' => 'Tanpa Garansi',
+                    'Memori' => '128 GB',
+                ],
+                'purchase_price' => 5300000,
+                'exchange_value' => 1,
+                'arrival_cost' => 0,
+                'shipping_cost' => 0,
+                'offline_price' => 0,
+                'entraverse_price' => 0,
+                'tokopedia_price' => 0,
+                'tiktok_price' => 0,
+                'shopee_price' => 0,
+            ],
+        ],
+    ]);
+
+    $response = $this->putJson("/api/v1/admin/categories/{$category->id}", [
+        'margin_percent' => 8,
+        'fees' => json_encode([
+            'entraverse' => [
+                'components' => [
+                    ['label' => 'Fee Entraverse', 'valueType' => 'percent', 'value' => 4],
+                ],
+            ],
+            'tokopedia' => [
+                'components' => [
+                    ['label' => 'Admin Tokopedia', 'valueType' => 'percent', 'value' => 12.53],
+                    ['label' => 'Layanan Tokopedia', 'valueType' => 'amount', 'value' => 1250],
+                ],
+            ],
+            'shopee' => ['components' => []],
+            'marketplace' => ['components' => []],
+            'tokopedia_tiktok' => ['components' => []],
+        ], JSON_THROW_ON_ERROR),
+    ]);
+
+    $response
+        ->assertOk()
+        ->assertJsonPath('success', true);
+
+    $refreshedProduct = $product->fresh();
+    $variantPricing = is_array($refreshedProduct?->variant_pricing) ? $refreshedProduct->variant_pricing : [];
+
+    expect((float) data_get($variantPricing, '0.margin_percent'))->toBe(8.0);
+    expect((float) data_get($variantPricing, '0.offline_price'))->toBe(5749000.0);
+    expect((float) data_get($variantPricing, '0.entraverse_price'))->toBe(6049000.0);
+    expect((float) data_get($variantPricing, '0.tokopedia_price'))->toBe(6649000.0);
 });
 
 test('cannot update nonexistent category', function (): void {

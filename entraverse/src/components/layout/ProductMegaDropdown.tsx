@@ -78,6 +78,9 @@ const HighlightProductCard = memo(function HighlightProductCard({
   item,
   onClose,
 }: HighlightProductCardProps) {
+  const [imageError, setImageError] = useState(false);
+  const hasImage = Boolean(item.product.image) && !imageError;
+
   return (
     <motion.div variants={productCardMotion} initial="initial" animate="animate">
       <Link
@@ -86,14 +89,17 @@ const HighlightProductCard = memo(function HighlightProductCard({
         className="group flex aspect-square h-full max-w-[190px] flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)]"
       >
         <div className="relative flex-1 overflow-hidden rounded-[18px] border border-slate-100 bg-white">
-          <Image
-            src={item.product.image}
-            alt={item.product.name}
-            fill
-            unoptimized
-            className="object-contain p-3 transition-transform duration-300 group-hover:scale-[1.03]"
-            sizes="(max-width: 1280px) 18vw, 180px"
-          />
+          {hasImage && (
+            <Image
+              src={item.product.image}
+              alt={item.product.name}
+              fill
+              unoptimized
+              className="object-contain p-3 transition-transform duration-300 group-hover:scale-[1.03]"
+              sizes="(max-width: 1280px) 18vw, 180px"
+              onError={() => setImageError(true)}
+            />
+          )}
           <span
             className={`absolute left-2.5 top-2.5 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold text-white shadow-sm ${
               item.badge === "HOT" ? "bg-rose-500" : "bg-slate-900"

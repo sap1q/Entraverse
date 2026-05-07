@@ -6,6 +6,7 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+
 class UserProfileResource extends JsonResource
 {
     /**
@@ -15,7 +16,7 @@ class UserProfileResource extends JsonResource
     {
         $avatarUrl = null;
         if (is_string($this->avatar_path) && trim($this->avatar_path) !== '') {
-            $avatarUrl = route('user.avatar.show', [
+            $avatarUrl = route('v1.user.avatar', [
                 'user' => (string) $this->id,
                 'v' => $this->updated_at?->timestamp,
             ], false);

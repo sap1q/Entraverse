@@ -19,7 +19,7 @@ const cards: readonly StatCard[] = [
   { key: "total", label: "Total Kategori", icon: Layers },
   { key: "active", label: "Kategori Aktif", icon: Activity },
   { key: "deleted", label: "Terhapus", icon: Trash2 },
-  { key: "avg_margin", label: "Rata-rata Margin", icon: BarChart3, suffix: "%" },
+  { key: "avg_margin", label: "Rata-rata Margin Keuntungan", icon: BarChart3, suffix: "%" },
 ];
 
 export default function CategoryStats({ stats, isLoading = false }: CategoryStatsProps) {

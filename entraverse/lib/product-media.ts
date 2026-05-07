@@ -35,3 +35,23 @@ export const buildMediaSubmission = (slots: PhotoSlot[]) => {
 
   return { photos, files };
 };
+
+export const buildGroupedMediaSubmission = (slots: Record<string, PhotoSlot>) => {
+  const persisted: Record<string, string> = {};
+  const files: Array<{ key: string; file: File }> = [];
+
+  Object.entries(slots).forEach(([key, slot]) => {
+    if (!slot) return;
+
+    if (slot.file) {
+      files.push({ key, file: slot.file });
+      return;
+    }
+
+    if (isPersistablePhotoPath(slot.preview)) {
+      persisted[key] = slot.preview.trim();
+    }
+  });
+
+  return { persisted, files };
+};

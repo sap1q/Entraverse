@@ -3,7 +3,7 @@
 import { RefreshCw, Settings2, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
-import type { MatrixPricing, ShippingRates, VariantCombination } from "@/types/product";
+import type { MatrixPricing, PhotoSlot, ShippingRates, VariantCombination } from "@/types/product";
 import type { CategoryFees, FeeChannel } from "@/types/category.types";
 import { DEFAULT_MATRIX_ROW, DEFAULT_SHIPPING_RATES } from "@/lib/utils";
 import {
@@ -13,13 +13,18 @@ import {
   type WarrantyComponent,
   type WarrantyPricingConfig,
 } from "@/lib/warrantyProgram";
+import { getSharedVariantImageKey, getSharedVariantImageLabel } from "@/lib/product-variant-order";
 import VariantRow from "@/components/features/products/VariantRow";
 import { useVariantCalculations } from "@/hooks/useVariantCalculations";
 
 type VariantTableProps = {
   combinations: VariantCombination[];
   matrixData: Record<string, MatrixPricing>;
+  variantImages: Record<string, PhotoSlot>;
+  variantImageErrors: Record<string, string>;
   onUpdateField: (key: string, field: keyof MatrixPricing, value: number | string) => void;
+  onVariantImageChange: (imageKey: string, file: File | null) => void;
+  onVariantImageRemove: (imageKey: string) => void;
   inventoryVolumeCbm?: number;
   shippingRateDefaults: ShippingRates;
   onShippingRatesChange: (nextRates: ShippingRates) => void;
@@ -66,7 +71,7 @@ const headers = [
 ];
 
 const groupedHeaders = [
-  { label: "Informasi Produk", span: 1, tone: "text-slate-700 bg-slate-100/80" },
+  { label: "Informasi Produk", span: 1, tone: "text-slate-700 bg-slate-100" },
   { label: "Harga Beli & Kurs", span: 4, tone: "text-indigo-700 bg-indigo-50" },
   { label: "Landed Cost", span: 2, tone: "text-blue-700 bg-blue-50" },
   { label: "Harga Jual Channel", span: 4, tone: "text-cyan-700 bg-cyan-50" },
@@ -74,7 +79,7 @@ const groupedHeaders = [
   { label: "Forecast Periode A", span: 3, tone: "text-amber-700 bg-amber-50" },
   { label: "Forecast Periode B", span: 3, tone: "text-orange-700 bg-orange-50" },
   { label: "Replenishment Planning", span: 8, tone: "text-emerald-700 bg-emerald-50" },
-  { label: "Status", span: 1, tone: "text-slate-700 bg-slate-100/80" },
+  { label: "Status", span: 1, tone: "text-slate-700 bg-slate-100" },
 ] as const;
 
 const platformLabel: Record<string, string> = {
@@ -211,21 +216,36 @@ const isShippingRateEqual = (left: ShippingRates, right: ShippingRates): boolean
 const roundToNearest = (value: number, step: number): number =>
   Math.round(value / step) * step;
 
-const applyRoundingRules = (value: number): number => {
+const roundUpToStep = (value: number, step: number): number =>
+  Math.ceil(value / step) * step;
+
+const getRoundingBucket = (value: number): { step: number; psychologicalCut: number } => {
   const safeValue = Math.max(0, Number(value) || 0);
   if (safeValue >= 500_000) {
-    return Math.max(0, roundToNearest(safeValue, 50_000) - 1_000);
+    return { step: 50_000, psychologicalCut: 1_000 };
   }
 
   if (safeValue >= 250_000) {
-    return Math.max(0, roundToNearest(safeValue, 10_000) - 1_000);
+    return { step: 10_000, psychologicalCut: 1_000 };
   }
 
   if (safeValue >= 100_000) {
-    return Math.max(0, roundToNearest(safeValue, 5_000) - 1_000);
+    return { step: 5_000, psychologicalCut: 1_000 };
   }
 
-  return Math.max(0, roundToNearest(safeValue, 1_000) - 100);
+  return { step: 1_000, psychologicalCut: 100 };
+};
+
+const applyNearestRoundingRules = (value: number): number => {
+  const safeValue = Math.max(0, Number(value) || 0);
+  const { step, psychologicalCut } = getRoundingBucket(safeValue);
+  return Math.max(0, roundToNearest(safeValue, step) - psychologicalCut);
+};
+
+const applyCeilRoundingRules = (value: number): number => {
+  const safeValue = Math.max(0, Number(value) || 0);
+  const { step, psychologicalCut } = getRoundingBucket(safeValue);
+  return Math.max(0, roundUpToStep(safeValue, step) - psychologicalCut);
 };
 
 const calculateArrivalCost = (
@@ -433,11 +453,11 @@ const updateComputedPricingForRow = (
 
   return {
     arrivalCost,
-    offlinePrice: applyRoundingRules(offlineWithWarranty),
-    entraversePrice: applyRoundingRules(entraverseWithWarranty),
-    tokopediaPrice: applyRoundingRules(tokopediaWithWarranty),
-    tiktokPrice: applyRoundingRules(tiktokWithWarranty),
-    shopeePrice: applyRoundingRules(shopeeWithWarranty),
+    offlinePrice: applyNearestRoundingRules(offlineWithWarranty),
+    entraversePrice: applyCeilRoundingRules(entraverseWithWarranty),
+    tokopediaPrice: applyNearestRoundingRules(tokopediaWithWarranty),
+    tiktokPrice: applyNearestRoundingRules(tiktokWithWarranty),
+    shopeePrice: applyNearestRoundingRules(shopeeWithWarranty),
     tokopediaFee: tokopediaFee.percentDisplay,
     tiktokFee: tiktokFee.percentDisplay,
     shopeeFee: shopeeFee.percentDisplay,
@@ -447,7 +467,11 @@ const updateComputedPricingForRow = (
 export default function VariantTable({
   combinations,
   matrixData,
+  variantImages,
+  variantImageErrors,
   onUpdateField,
+  onVariantImageChange,
+  onVariantImageRemove,
   inventoryVolumeCbm = 0,
   shippingRateDefaults,
   onShippingRatesChange,
@@ -786,7 +810,7 @@ export default function VariantTable({
                 <th
                   key={group.label}
                   colSpan={group.span}
-                  className={`border-b border-slate-200 px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wide ${group.tone} ${index === 0 ? "sticky left-0 z-30 shadow-[4px_0_8px_rgba(0,0,0,0.04)]" : ""}`}
+                  className={`border-b border-slate-200 px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wide ${group.tone} ${index === 0 ? "sticky left-0 z-30 min-w-[280px] whitespace-nowrap shadow-[4px_0_8px_rgba(0,0,0,0.04)]" : ""}`}
                 >
                   {group.label}
                 </th>
@@ -796,6 +820,8 @@ export default function VariantTable({
               {headers.map((header, index) => {
                 const isSticky = index === 0;
                 const isPriceChannelHeader = priceChannelHeaders.has(header);
+                const isCenteredHeader = header === "Stok";
+                const headerAlignmentClass = isSticky ? "text-left" : "text-center";
                 const renderedHeader = (() => {
                   if (header === "Harga Jual Offline") {
                     return (
@@ -838,7 +864,7 @@ export default function VariantTable({
                 return (
                   <th
                     key={header}
-                    className={`border-b border-slate-200 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 ${isPriceChannelHeader ? "whitespace-nowrap text-center" : ""} ${isSticky ? "sticky left-0 z-20 bg-slate-50 shadow-[4px_0_8px_rgba(0,0,0,0.04)]" : ""}`}
+                    className={`border-b border-slate-200 px-3 py-3 ${headerAlignmentClass} text-xs font-semibold uppercase tracking-wide text-slate-500 ${isPriceChannelHeader || isCenteredHeader ? "whitespace-nowrap" : ""} ${isSticky ? "sticky left-0 z-20 bg-slate-50 shadow-[4px_0_8px_rgba(0,0,0,0.04)]" : ""}`}
                   >
                     {renderedHeader}
                   </th>
@@ -849,13 +875,21 @@ export default function VariantTable({
           <tbody>
             {combinations.map((combo) => {
               const row = normalizedRows[combo.key];
+              const sharedImageKey = getSharedVariantImageKey(combo);
+              const sharedImageLabel = getSharedVariantImageLabel(combo);
 
               return (
                 <VariantRow
                   key={combo.key}
                   combo={combo}
                   row={row}
+                  sharedImageKey={sharedImageKey}
+                  sharedImageLabel={sharedImageLabel}
+                  variantImage={variantImages[sharedImageKey] ?? { file: null, preview: "" }}
+                  variantImageError={variantImageErrors[sharedImageKey] ?? ""}
                   onUpdateField={onUpdateField}
+                  onVariantImageChange={onVariantImageChange}
+                  onVariantImageRemove={onVariantImageRemove}
                   selected={selectedKey === combo.key}
                   onSelect={() => {
                     setSelectedKey(combo.key);

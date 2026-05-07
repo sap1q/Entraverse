@@ -1,6 +1,7 @@
 "use client";
 
 import type { ChangeEvent } from "react";
+import { useState } from "react";
 
 interface ProfileAvatarPickerProps {
   previewUrl: string | null;
@@ -21,14 +22,22 @@ export function ProfileAvatarPicker({
   onChange,
   onRemove,
 }: ProfileAvatarPickerProps) {
+  const [failedPreviewUrl, setFailedPreviewUrl] = useState<string | null>(null);
+  const showPreviewImage = Boolean(previewUrl) && previewUrl !== failedPreviewUrl;
+
   return (
     <div className="rounded-3xl border border-slate-200 bg-slate-50/80 px-4 py-4 sm:px-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-4">
           <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-600 text-lg font-bold text-white shadow-[0_12px_30px_rgba(37,99,235,0.28)]">
-            {previewUrl ? (
+            {showPreviewImage ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={previewUrl} alt="Preview foto profil" className="h-full w-full object-cover" />
+              <img
+                src={previewUrl ?? undefined}
+                alt=""
+                className="h-full w-full object-cover"
+                onError={() => setFailedPreviewUrl(previewUrl)}
+              />
             ) : (
               initials
             )}

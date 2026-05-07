@@ -56,8 +56,8 @@ test('product resource rewrites legacy storage product urls to the product image
 
     $response
         ->assertOk()
-        ->assertJsonPath('data.main_image', route('products.image', ['path' => 'products/legacy-product.jpg']))
-        ->assertJsonPath('data.photos.0.url', route('products.image', ['path' => 'products/legacy-product.jpg']));
+        ->assertJsonPath('data.main_image', route('v1.products.image', ['path' => 'products/legacy-product.jpg']))
+        ->assertJsonPath('data.photos.0.url', route('v1.products.image', ['path' => 'products/legacy-product.jpg']));
 });
 
 test('product resource keeps external product image urls unchanged', function (): void {
@@ -106,9 +106,62 @@ test('admin product update locks local media state for future jurnal pulls', fun
 
     $response
         ->assertOk()
-        ->assertJsonPath('data.photos.0.url', route('products.image', ['path' => 'products/original-product.jpg']))
+        ->assertJsonPath('data.photos.0.url', route('v1.products.image', ['path' => 'products/original-product.jpg']))
         ->assertJsonPath('data.jurnal_metadata.local_media_state.locked', true)
         ->assertJsonPath('data.jurnal_metadata.local_media_state.source', 'admin_edit');
+});
+
+test('admin can save shared variant image uploads and receives normalized urls', function (): void {
+    Sanctum::actingAs($this->admin, ['*']);
+    Storage::fake('public');
+
+    $response = $this->post('/api/v1/admin/products', [
+        'name' => 'Produk Varian',
+        'category' => 'Kacamata',
+        'brand' => 'Entraverse',
+        'variant_pricing' => json_encode([
+            [
+                'label' => 'Garansi: Tanpa Garansi / Memori: 128 GB',
+                'options' => [
+                    'Garansi' => 'Tanpa Garansi',
+                    'Memori' => '128 GB',
+                ],
+                'shared_variant_image_key' => 'memory:128-gb',
+                'stock' => 2,
+            ],
+            [
+                'label' => 'Garansi: Toko - 1 Tahun / Memori: 128 GB',
+                'options' => [
+                    'Garansi' => 'Toko - 1 Tahun',
+                    'Memori' => '128 GB',
+                ],
+                'shared_variant_image_key' => 'memory:128-gb',
+                'stock' => 1,
+            ],
+        ]),
+        'variant_image_file__memory:128-gb' => UploadedFile::fake()->image('variant-memory-128.jpg', 1200, 800),
+    ], [
+        'Accept' => 'application/json',
+    ]);
+
+    $response
+        ->assertCreated()
+        ->assertJsonCount(2, 'data.variant_pricing')
+        ->assertJsonPath('data.variant_pricing.0.shared_variant_image_key', 'memory:128-gb')
+        ->assertJsonPath('data.variant_pricing.1.shared_variant_image_key', 'memory:128-gb');
+
+    $variantImageUrlA = (string) $response->json('data.variant_pricing.0.variant_image');
+    $variantImageUrlB = (string) $response->json('data.variant_pricing.1.variant_image');
+
+    expect($variantImageUrlA)->toContain('/api/v1/products/image/products/variants/');
+    expect($variantImageUrlB)->toBe($variantImageUrlA);
+
+    $storedVariantPricing = Product::query()->first()?->variant_pricing ?? [];
+    $storedVariantImageA = (string) data_get($storedVariantPricing, '0.variant_image', '');
+    $storedVariantImageB = (string) data_get($storedVariantPricing, '1.variant_image', '');
+
+    expect($storedVariantImageA)->toStartWith('/storage/products/variants/');
+    expect($storedVariantImageB)->toBe($storedVariantImageA);
 });
 
 test('public product image endpoint serves stored product files', function (): void {

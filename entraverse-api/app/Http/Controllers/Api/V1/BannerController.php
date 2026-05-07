@@ -245,7 +245,7 @@ class BannerController extends Controller
 
     private function buildImageUrl(string $path): string
     {
-        return route('banners.image', ['path' => ltrim($path, '/')]);
+        return route('v1.banners.image', ['path' => ltrim($path, '/')]);
     }
 
     private function deleteImageIfExists(?string $path): void

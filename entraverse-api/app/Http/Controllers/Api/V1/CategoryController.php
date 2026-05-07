@@ -4,6 +4,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Services\ProductService;
 use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +14,10 @@ use App\Http\Controllers\Controller;
 
 class CategoryController extends Controller
 {
+    public function __construct(private ProductService $productService)
+    {
+    }
+
     /**
      * Display a listing of categories.
      */
@@ -315,6 +320,15 @@ class CategoryController extends Controller
             }
 
             $category->update($data);
+
+            $shouldRepriceProducts = array_key_exists('name', $data)
+                || array_key_exists('margin_percent', $data)
+                || array_key_exists('fees', $data)
+                || array_key_exists('program_garansi', $data);
+
+            if ($shouldRepriceProducts) {
+                $this->productService->repriceProductsForCategory($category->fresh());
+            }
 
             DB::commit();
 

@@ -21,7 +21,7 @@ export function BannerSlider({ banners, loading = false }: BannerSliderProps) {
 
   if (loading) {
     return (
-      <div className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+      <div className="overflow-hidden rounded-[28px] bg-white ring-1 ring-inset ring-slate-200/80 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
         <div className="aspect-[2/1] w-full animate-pulse bg-[linear-gradient(135deg,#f8fbff_0%,#e8f0ff_52%,#edf5ff_100%)]" />
       </div>
     );
@@ -29,14 +29,14 @@ export function BannerSlider({ banners, loading = false }: BannerSliderProps) {
 
   if (banners.length === 0) {
     return (
-      <div className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+      <div className="overflow-hidden rounded-[28px] bg-white ring-1 ring-inset ring-slate-200/80 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
         <div className="aspect-[2/1] w-full bg-[linear-gradient(135deg,#f8fbff_0%,#eef4ff_52%,#f8fbff_100%)]" />
       </div>
     );
   }
 
   return (
-    <div className="banner-slider-shell group relative overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+    <div className="banner-slider-shell group relative overflow-hidden rounded-[28px] bg-white ring-1 ring-inset ring-slate-200/80 shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
       <Swiper
         modules={[Navigation, Pagination, Autoplay]}
         loop={hasControls}

@@ -91,7 +91,7 @@ export default function CategoriesPageScreen() {
       categories.map((item) => ({
         id: item.id,
         name: item.name,
-        min_margin: item.min_margin,
+        margin_keuntungan: item.margin_percent ?? item.min_margin,
         deleted: item.deleted_at ? "yes" : "no",
         created_at: item.created_at ?? "",
         updated_at: item.updated_at ?? "",
@@ -100,7 +100,7 @@ export default function CategoriesPageScreen() {
   );
 
   const onExportCsv = () => {
-    const headers = ["id", "name", "min_margin", "deleted", "created_at", "updated_at"];
+    const headers = ["id", "name", "margin_keuntungan", "deleted", "created_at", "updated_at"];
     const rows = exportRows.map((row) =>
       headers.map((header) => csvEscape(String(row[header as keyof typeof row] ?? ""))).join(",")
     );
@@ -109,7 +109,7 @@ export default function CategoriesPageScreen() {
   };
 
   const onExportExcel = () => {
-    const headers = ["id", "name", "min_margin", "deleted", "created_at", "updated_at"];
+    const headers = ["id", "name", "margin_keuntungan", "deleted", "created_at", "updated_at"];
     const rows = exportRows.map((row) => headers.map((header) => row[header as keyof typeof row] ?? "").join("\t"));
     downloadText(
       `categories-${Date.now()}.xls`,

@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { DollarSign, Package, TrendingUp } from "lucide-react";
-import type { MatrixPricing, VariantCombination } from "@/types/product";
+import type { MatrixPricing, PhotoSlot, VariantCombination } from "@/types/product";
 import type { CategoryFees } from "@/types/category.types";
 import { calculateFinalBeli, DEFAULT_MATRIX_ROW } from "@/lib/utils";
 import type { WarrantyComponent, WarrantyPricingConfig } from "@/lib/warrantyProgram";
@@ -14,7 +14,11 @@ import type { ShippingRates } from "@/types/product";
 type VariantMatrixProps = {
   combinations: VariantCombination[];
   matrixData: Record<string, MatrixPricing>;
+  variantImages: Record<string, PhotoSlot>;
+  variantImageErrors: Record<string, string>;
   updateField: (key: string, field: keyof MatrixPricing, value: number | string) => void;
+  onVariantImageChange: (imageKey: string, file: File | null) => void;
+  onVariantImageRemove: (imageKey: string) => void;
   inventoryVolumeCbm?: number;
   shippingRates: ShippingRates;
   onShippingRatesChange: (nextRates: ShippingRates) => void;
@@ -35,7 +39,11 @@ const formatMoney = (value: number) => `Rp ${currency.format(Number.isFinite(val
 export default function VariantMatrix({
   combinations,
   matrixData,
+  variantImages,
+  variantImageErrors,
   updateField,
+  onVariantImageChange,
+  onVariantImageRemove,
   inventoryVolumeCbm = 0,
   shippingRates,
   onShippingRatesChange,
@@ -98,7 +106,11 @@ export default function VariantMatrix({
       <VariantTable
         combinations={combinations}
         matrixData={matrixData}
+        variantImages={variantImages}
+        variantImageErrors={variantImageErrors}
         onUpdateField={updateField}
+        onVariantImageChange={onVariantImageChange}
+        onVariantImageRemove={onVariantImageRemove}
         inventoryVolumeCbm={inventoryVolumeCbm}
         shippingRateDefaults={shippingRates}
         onShippingRatesChange={onShippingRatesChange}

@@ -47,7 +47,10 @@ class RegisterController extends Controller
         $actor = $this->resolveActor($request);
 
         $hasAdmins = Admin::query()->exists();
-        $allowBootstrap = filter_var(env('ALLOW_ADMIN_BOOTSTRAP', false), FILTER_VALIDATE_BOOL);
+
+        // Use config() — NOT env() — so this reads correctly after `php artisan config:cache`.
+        // Calling env() directly in a controller always returns null in cached environments.
+        $allowBootstrap = (bool) config('services.admin.allow_bootstrap', false);
 
         if (! $hasAdmins && ! $allowBootstrap) {
             return $this->error('Bootstrap admin publik dinonaktifkan. Gunakan seeder atau CLI.', 403);

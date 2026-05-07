@@ -23,7 +23,21 @@ class ShippingTrackingCallbackController extends Controller
         $configuredSecret = trim((string) config('services.tracking.webhook_secret', ''));
         $providedSecret = trim((string) ($request->header('X-Tracking-Webhook-Secret') ?? $request->input('secret', '')));
 
-        if ($configuredSecret !== '' && ! hash_equals($configuredSecret, $providedSecret)) {
+        // SECURITY: if TRACKING_WEBHOOK_SECRET is not configured, REJECT all requests.
+        // An empty secret means the endpoint is unauthenticated — anyone can update tracking status.
+        // Set TRACKING_WEBHOOK_SECRET in your .env to enable this webhook.
+        if ($configuredSecret === '') {
+            Log::warning('Tracking webhook rejected: TRACKING_WEBHOOK_SECRET is not configured.', [
+                'ip' => $request->ip(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Webhook tracking tidak dikonfigurasi. Hubungi administrator.',
+            ], 503);
+        }
+
+        if (! hash_equals($configuredSecret, $providedSecret)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Tracking webhook secret tidak valid.',

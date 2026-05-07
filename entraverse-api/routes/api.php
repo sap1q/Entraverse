@@ -36,7 +36,7 @@ use Laravel\Sanctum\Http\Controllers\CsrfCookieController;
 
 /*
 |--------------------------------------------------------------------------
-| WEBHOOKS & CALLBACKS — tanpa versioning
+| WEBHOOKS & CALLBACKS - tanpa versioning
 |--------------------------------------------------------------------------
 | Webhook dari pihak ketiga (Midtrans, RajaOngkir) tidak perlu versioning
 | karena URL-nya di-register di dashboard masing-masing provider.
@@ -45,14 +45,6 @@ use Laravel\Sanctum\Http\Controllers\CsrfCookieController;
 
 Route::prefix('payment')->name('payment.')->group(function (): void {
     Route::post('callback', [PaymentCallbackController::class, 'callback'])->name('callback');
-});
-
-// Customer Session (login/register untuk storefront) — tanpa versioning
-Route::prefix('customer-session')->name('customer-session.')->group(function (): void {
-    Route::get('csrf-cookie', [CsrfCookieController::class, 'show'])->name('csrf-cookie');
-    Route::post('login', [CustomerLoginController::class, 'login'])->name('login');
-    Route::post('register', [CustomerRegisterController::class, 'register'])->name('register');
-    Route::middleware('auth:sanctum')->post('logout', [CustomerLogoutController::class, 'logout'])->name('logout');
 });
 
 Route::prefix('shipping')->name('shipping.webhook.')->group(function (): void {
@@ -69,7 +61,7 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
 
     /*
     |----------------------------------------------------------------------
-    | PUBLIC — tidak perlu auth
+    | PUBLIC - tidak perlu auth
     |----------------------------------------------------------------------
     */
 
@@ -109,7 +101,7 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
         Route::post('lookup', [WarrantyController::class, 'lookup'])->name('lookup');
     });
 
-    // RajaOngkir — data region publik
+    // RajaOngkir - data region publik
     Route::prefix('rajaongkir')->name('rajaongkir.')->group(function (): void {
         Route::get('provinces', [RajaOngkirRegionController::class, 'provinces'])->name('provinces');
         Route::get('cities', [RajaOngkirRegionController::class, 'cities'])->name('cities');
@@ -120,9 +112,28 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
 
     /*
     |----------------------------------------------------------------------
-    | CUSTOMER — auth:sanctum + customer middleware
+    | CUSTOMER - auth:sanctum + customer middleware
     |----------------------------------------------------------------------
     */
+
+    // Customer session storefront
+    Route::prefix('customer-session')->name('customer-session.')->group(function (): void {
+        Route::get('csrf-cookie', [CsrfCookieController::class, 'show'])->name('csrf-cookie');
+
+        // Rate limit: max 10 login attempts per minute per IP.
+        // Cukup longgar untuk user legit, tapi blokir brute-force / credential stuffing.
+        Route::post('login', [CustomerLoginController::class, 'login'])
+            ->middleware('throttle:10,1')
+            ->name('login');
+
+        // Rate limit: max 5 register attempts per minute per IP.
+        // Lebih strict dari login - mencegah spam pembuatan akun.
+        Route::post('register', [CustomerRegisterController::class, 'register'])
+            ->middleware('throttle:5,1')
+            ->name('register');
+
+        Route::middleware('auth:sanctum')->post('logout', [CustomerLogoutController::class, 'logout'])->name('logout');
+    });
 
     Route::middleware(['auth:sanctum', 'customer'])->group(function (): void {
 
@@ -132,7 +143,7 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
             Route::match(['put', 'post'], '/', [UserProfileController::class, 'update'])->name('update');
             Route::get('avatar/{user}', [UserProfileController::class, 'avatar'])->name('avatar');
 
-            // Alamat user — satu-satunya route yang valid (menggantikan 3 duplikat lama)
+            // Alamat user - satu-satunya route yang valid (menggantikan 3 duplikat lama)
             Route::prefix('addresses')->name('addresses.')->group(function (): void {
                 Route::get('/', [UserAddressController::class, 'index'])->name('index');
                 Route::post('/', [UserAddressController::class, 'store'])->name('store');
@@ -172,7 +183,7 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
 
     /*
     |----------------------------------------------------------------------
-    | ADMIN — auth:sanctum + admin.secure + admin middleware
+    | ADMIN - auth:sanctum + admin.secure + admin middleware
     |----------------------------------------------------------------------
     */
 
@@ -281,7 +292,7 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
                 Route::delete('{warranty}', [WarrantyController::class, 'destroy'])->name('destroy');
             });
 
-            // Pengiriman (admin — konfigurasi origin toko)
+            // Pengiriman (admin - konfigurasi origin toko)
             Route::prefix('shipping')->name('shipping.')->group(function (): void {
                 Route::get('origin', [StoreOriginController::class, 'show'])->name('origin.show');
                 Route::put('origin', [StoreOriginController::class, 'upsert'])->name('origin.upsert');
@@ -299,10 +310,10 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
     // Jurnal (Mekari)
     Route::prefix('integrations/jurnal')->name('integrations.jurnal.')->group(function (): void {
 
-        // Webhook dari Jurnal — tanpa auth (verifikasi via signature di controller)
+        // Webhook dari Jurnal - tanpa auth (verifikasi via signature di controller)
         Route::post('webhook', [JurnalSyncController::class, 'webhook'])->name('webhook');
 
-        // FIX: route ini sebelumnya hanya pakai auth:sanctum — customer bisa akses!
+        // FIX: route ini sebelumnya hanya pakai auth:sanctum - customer bisa akses!
         // Sekarang dikunci dengan middleware admin.
         Route::middleware(['auth:sanctum', 'admin.secure', 'admin'])->group(function (): void {
             Route::get('status', [JurnalSyncController::class, 'status'])->name('status');
@@ -318,7 +329,7 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
     // Marketplace (Shopee, TikTok Shop, dll)
     Route::prefix('integrations/marketplaces')->name('integrations.marketplaces.')->group(function (): void {
 
-        // OAuth callback dari marketplace — tanpa auth
+        // OAuth callback dari marketplace - tanpa auth
         Route::get('{channel}/callback', [MarketplaceIntegrationController::class, 'callback'])->name('callback');
 
         Route::middleware(['auth:sanctum', 'admin.secure', 'admin'])->group(function (): void {
@@ -330,12 +341,11 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
             Route::delete('{channel}/mappings', [MarketplaceIntegrationController::class, 'destroyMapping'])->name('mappings.destroy');
         });
     });
-
-}); // end Route::prefix('v1')
+});
 
 /*
 |--------------------------------------------------------------------------
-| DEPRECATED — hapus setelah semua consumer (frontend) sudah migrasi ke /v1
+| DEPRECATED - hapus setelah semua consumer (frontend) sudah migrasi ke /v1
 |--------------------------------------------------------------------------
 | Tambahkan middleware 'deprecated' setelah buat DeprecatedRoute middleware.
 | Middleware itu inject header: Deprecation: true & Sunset: 2026-06-01
@@ -344,7 +354,22 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
 | Cara buat middleware-nya ada di komentar di bawah.
 */
 
+// Uncomment jika frontend belum siap migrasi ke /v1
 // Route::middleware('deprecated')->group(function (): void {
+//
+//     Route::prefix('customer-session')->name('customer-session.deprecated.')->group(function (): void {
+//         Route::get('csrf-cookie', [CsrfCookieController::class, 'show'])->name('csrf-cookie');
+//
+//         Route::post('login', [CustomerLoginController::class, 'login'])
+//             ->middleware('throttle:10,1')
+//             ->name('login');
+//
+//         Route::post('register', [CustomerRegisterController::class, 'register'])
+//             ->middleware('throttle:5,1')
+//             ->name('register');
+//
+//         Route::middleware('auth:sanctum')->post('logout', [CustomerLogoutController::class, 'logout'])->name('logout');
+//     });
 //
 //     Route::middleware(['auth:sanctum', 'customer'])->prefix('shipping')->name('shipping.deprecated.')->group(function (): void {
 //         Route::post('cost', [ShippingController::class, 'cost'])->name('cost');
@@ -382,7 +407,7 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
 //         Route::get('origin', [RajaOngkirRegionController::class, 'origin'])->name('origin');
 //     });
 //
-//     // user-addresses (3 duplikat → semua deprecated, ganti ke /v1/user/addresses)
+//     // user-addresses (3 duplikat -> semua deprecated, ganti ke /v1/user/addresses)
 //     Route::middleware('auth:sanctum')->prefix('user-addresses')->name('user-addresses.deprecated.')->group(function (): void {
 //         Route::get('/', [UserAddressController::class, 'index'])->name('index');
 //         Route::post('/', [UserAddressController::class, 'store'])->name('store');

@@ -68,6 +68,8 @@ class ProductResource extends JsonResource
                 $item['margin_percent'] = (float) ($item['margin_percent'] ?? 0);
                 $item['tiktok_price'] = (float) ($item['tiktok_price'] ?? ($item['tokopedia_price'] ?? 0));
                 $item['tiktok_fee'] = (float) ($item['tiktok_fee'] ?? ($item['tokopedia_fee'] ?? 0));
+                $variantImage = is_string($item['variant_image'] ?? null) ? trim((string) $item['variant_image']) : '';
+                $item['variant_image'] = $variantImage !== '' ? $this->resolveProductPhotoUrl($variantImage) : null;
                 $variantKey = ProductVariantKey::resolve($item, $index);
                 $tiktokMapping = $marketplaceMappings->get('tiktok:' . $variantKey)?->first();
                 $shopeeMapping = $marketplaceMappings->get('shopee:' . $variantKey)?->first();
@@ -227,18 +229,26 @@ class ProductResource extends JsonResource
             $photoHost = strtolower((string) ($parsedUrl['host'] ?? ''));
             $appHost = strtolower((string) parse_url((string) config('app.url', ''), PHP_URL_HOST));
             $isInternalLocalPhoto = in_array($photoHost, self::LOCAL_HOSTS, true);
-            $isLocalAppHost = $appHost !== '' && in_array($appHost, self::LOCAL_HOSTS, true);
 
             if (! is_string($parsedPath) || $parsedPath === '') {
                 return $trimmed;
             }
 
+            $normalizedPath = ltrim($parsedPath, '/');
+            $isLocalProductPath = Str::startsWith($normalizedPath, [
+                'api/v1/products/image/',
+                'storage/products/',
+                'products/',
+            ]);
+
+            if (! $isLocalProductPath) {
+                return $trimmed;
+            }
+
             if (
                 $photoHost !== ''
-                && $appHost !== ''
-                && $photoHost !== $appHost
                 && ! $isInternalLocalPhoto
-                && ! $isLocalAppHost
+                && ($appHost === '' || $photoHost !== $appHost)
             ) {
                 return $trimmed;
             }
@@ -258,7 +268,7 @@ class ProductResource extends JsonResource
         }
 
         if (Str::startsWith($normalized, 'products/')) {
-            return route('products.image', ['path' => $normalized]);
+            return route('v1.products.image', ['path' => $normalized]);
         }
 
         if (Str::startsWith($trimmed, '/')) {
